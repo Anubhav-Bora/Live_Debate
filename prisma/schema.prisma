@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  username  String   @unique
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scores         Score[]
+  messages       Message[]
+  debatesCreated Debate[]    @relation("Creator")
+  debatesPro     Debate[]    @relation("ProUser")
+  debatesCon     Debate[]    @relation("ConUser")
+  debatesJudged  Debate[]    @relation("Judge") // ✅ Added this line
+  UserBadge      UserBadge[]
+  Vote           Vote[]
+}
+
+model Debate {
+  id            String   @id @default(cuid())
+  topic         String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  duration      Int      @default(180)
+  status        String   @default("waiting")
+  joinCodeCon   String   @unique // For Con participant
+  joinCodeJudge String   @unique // For Judge
+  isPublic      Boolean  @default(true) // Public debates can be viewed by anyone
+
+  creator   User   @relation("Creator", fields: [creatorId], references: [id])
+  creatorId String
+
+  proUser   User   @relation("ProUser", fields: [proUserId], references: [id])
+  proUserId String
+
+  conUser   User?   @relation("ConUser", fields: [conUserId], references: [id])
+  conUserId String?
+
+  judge   User?   @relation("Judge", fields: [judgeId], references: [id])
+  judgeId String?
+
+  messages Message[]
+  scores   Score[]
+  Vote     Vote[]
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  content   String
+  createdAt DateTime @default(now())
+  role      String
+
+  sender   User   @relation(fields: [senderId], references: [id])
+  senderId String
+
+  debate   Debate @relation(fields: [debateId], references: [id])
+  debateId String
+}
+
+model Score {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  logic          Float
+  clarity        Float
+  persuasiveness Float
+  tone           Float
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  debate   Debate @relation(fields: [debateId], references: [id])
+  debateId String
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  name        String
+  description String
+  icon        String
+  criteria    Json
+  createdAt   DateTime    @default(now())
+  users       UserBadge[]
+}
+
+model UserBadge {
+  id       String   @id @default(cuid())
+  user     User     @relation(fields: [userId], references: [id])
+  userId   String
+  badge    Badge    @relation(fields: [badgeId], references: [id])
+  badgeId  String
+  earnedAt DateTime @default(now())
+
+  @@unique([userId, badgeId])
+}
+
+model Vote {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  debate    Debate   @relation(fields: [debateId], references: [id])
+  debateId  String
+  winner    String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, debateId])
+}

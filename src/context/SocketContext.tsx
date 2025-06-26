@@ -1,0 +1,57 @@
+"use client";
+import { createContext, useContext, useEffect, useState } from "react";
+import  io  from "socket.io-client"; // only importing io, ignoring Socket type
+
+type SocketContextType = {
+  socket: any | null; // 👈 use `any` to bypass type checking
+  isConnected: boolean;
+};
+
+const SocketContext = createContext<SocketContextType>({
+  socket: null,
+  isConnected: false,
+});
+
+export const useSocket = () => {
+  return useContext(SocketContext);
+};
+
+export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
+  const [socket, setSocket] = useState<any | null>(null); // 👈 use `any` here too
+  const [isConnected, setIsConnected] = useState(false);
+
+  useEffect(() => {
+    const socketInstance = io({
+      path: "/api/socket.io",
+      autoConnect: true,
+      transports: ['websocket', 'polling'],
+    });
+
+    socketInstance.on("connect", () => {
+      console.log("✅ Connected to Socket.IO server");
+      setIsConnected(true);
+    });
+
+    socketInstance.on("disconnect", () => {
+      console.log("❌ Disconnected from Socket.IO server");
+      setIsConnected(false);
+    });
+
+    socketInstance.on("connect_error", (error: any) => { // 👈 error type ignored
+      console.error("❌ Connection error:", error.message);
+      setIsConnected(false);
+    });
+
+    setSocket(socketInstance);
+
+    return () => {
+      socketInstance.disconnect();
+    };
+  }, []);
+
+  return (
+    <SocketContext.Provider value={{ socket, isConnected }}>
+      {children}
+    </SocketContext.Provider>
+  );
+};

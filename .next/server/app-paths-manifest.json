@@ -1,0 +1,9 @@
+{
+  "/api/sync-user/route": "app/api/sync-user/route.js",
+  "/api/debates/[id]/messages/route": "app/api/debates/[id]/messages/route.js",
+  "/page": "app/page.js",
+  "/sign-in/[[...sign-in]]/page": "app/sign-in/[[...sign-in]]/page.js",
+  "/debates/page": "app/debates/page.js",
+  "/debates/[id]/page": "app/debates/[id]/page.js",
+  "/sign-up/[[...sign-up]]/page": "app/sign-up/[[...sign-up]]/page.js"
+}
