@@ -38,15 +38,11 @@ app.prepare().then(() => {
 
   socket.on('join_debate', async ({ debateId, userId, role }) => {
   try {
-    if (role === 'viewer') {
-      socket.join(`debate_${debateId}_viewers`);
-    } else {
-      socket.join(`debate_${debateId}_participants`);
-    }
+    // All users join the same room for real-time messaging
+    socket.join(`debate_${debateId}`);
     console.log(`User ${userId} joined debate ${debateId} as ${role}`);
-    
-    // Notify others
-    socket.to(`debate_${debateId}_participants`).emit('user_joined', { userId, role });
+    // Notify others (optional, can be kept or removed)
+    socket.to(`debate_${debateId}`).emit('user_joined', { userId, role });
   } catch (error) {
     console.error('Error joining debate:', error);
     socket.emit('error', { message: 'Failed to join debate' });

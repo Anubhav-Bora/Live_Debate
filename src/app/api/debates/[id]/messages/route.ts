@@ -16,7 +16,7 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching messages:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch messages' },
+      { error: 'Failed to fetch messages', details: error instanceof Error ? error.message : error },
       { status: 500 }
     );
   }
@@ -36,21 +36,35 @@ export async function POST(
       );
     }
 
-    const newMessage = await prisma.message.create({
-      data: {
-        content,
-        role,
-        debateId: params.id,
-        senderId: userId
-      },
-      include: { sender: true }
-    });
+    // Look up the user by clerkId
+    const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
 
-    return NextResponse.json(newMessage);
+    try {
+      const newMessage = await prisma.message.create({
+        data: {
+          content,
+          role,
+          debateId: params.id,
+          senderId: user.id, // Use the internal CUID
+        },
+        include: { sender: true }
+      });
+
+      return NextResponse.json(newMessage);
+    } catch (dbError) {
+      console.error('DB error creating message:', dbError);
+      return NextResponse.json(
+        { error: 'Failed to create message', details: dbError instanceof Error ? dbError.message : dbError },
+        { status: 500 }
+      );
+    }
   } catch (error) {
     console.error('Error creating message:', error);
     return NextResponse.json(
-      { error: 'Failed to create message' },
+      { error: 'Failed to create message', details: error instanceof Error ? error.message : error },
       { status: 500 }
     );
   }

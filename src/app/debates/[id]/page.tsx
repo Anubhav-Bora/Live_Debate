@@ -26,11 +26,12 @@ export default function DebatePage() {
 
     const fetchDebate = async () => {
       try {
+        console.log('Fetching debate with id:', id);
         const res = await fetch(`/api/debates/${id}`);
+        console.log('Fetch response:', res);
         if (res.ok) {
           const data = await res.json();
           setDebate(data);
-          
           if (user?.id) {
             if (data.proUser?.clerkId === user.id) {
               setRole("pro");
@@ -40,9 +41,16 @@ export default function DebatePage() {
               setRole("judge");
             }
           }
+        } else {
+          setDebate(null);
+          setLoading(false);
+          toast.error(`Failed to fetch debate: ${res.status}`);
         }
       } catch (error) {
         console.error("Error fetching debate:", error);
+        setDebate(null);
+        setLoading(false);
+        toast.error("Error fetching debate");
       } finally {
         setLoading(false);
       }
@@ -73,8 +81,12 @@ export default function DebatePage() {
         setRole(action === "join_con" ? "con" : "judge");
         toast.success(`Joined as ${action === "join_con" ? "Con" : "Judge"}`);
       } else {
-        const errorData = await res.json();
-        toast.error(errorData.error || "Failed to join");
+        let errorMsg = "Failed to join";
+        try {
+          const errorData = await res.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch (e) {}
+        toast.error(errorMsg);
       }
     } catch (error) {
       console.error("Error joining debate:", error);
@@ -87,8 +99,11 @@ export default function DebatePage() {
   }
 
   if (!debate) {
-    return <div className="container mx-auto px-4 py-8">Debate not found</div>;
+    return <div className="container mx-auto px-4 py-8 text-red-500 font-bold">Debate not found or failed to load. Please check the debate ID or try again later.</div>;
   }
+
+  // Show join codes for debugging (development only)
+  const isDev = process.env.NODE_ENV !== "production";
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -99,6 +114,14 @@ export default function DebatePage() {
         </Button>
       </div>
       
+      {isDev && (
+        <div className="mb-4 p-2 bg-yellow-100 border border-yellow-400 rounded text-xs">
+          <div><b>Debug:</b> Join code for Con: <span className="font-mono">{debate.joinCodeCon}</span></div>
+          <div>Join code for Judge: <span className="font-mono">{debate.joinCodeJudge}</span></div>
+          <div>Debate ID: <span className="font-mono">{debate.id}</span></div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <Card>
           <CardHeader>
@@ -171,7 +194,7 @@ export default function DebatePage() {
                   <Input
                     value={joinCode}
                     onChange={(e) => setJoinCode(e.target.value)}
-                    placeholder="Enter con join code"
+                    placeholder={isDev ? `Enter con join code (see above)` : "Enter con join code"}
                   />
                   <Button 
                     onClick={() => handleJoin("join_con")}
@@ -179,6 +202,9 @@ export default function DebatePage() {
                   >
                     Join as Con
                   </Button>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Make sure you enter the exact join code (case-sensitive).
                 </div>
               </div>
             )}
@@ -190,7 +216,7 @@ export default function DebatePage() {
                   <Input
                     value={joinCode}
                     onChange={(e) => setJoinCode(e.target.value)}
-                    placeholder="Enter judge join code"
+                    placeholder={isDev ? `Enter judge join code (see above)` : "Enter judge join code"}
                   />
                   <Button 
                     onClick={() => handleJoin("join_judge")}
@@ -198,6 +224,9 @@ export default function DebatePage() {
                   >
                     Join as Judge
                   </Button>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  Make sure you enter the exact join code (case-sensitive).
                 </div>
               </div>
             )}

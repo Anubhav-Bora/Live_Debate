@@ -1,4 +1,4 @@
-// File: D:\webDev Projects\live-ai-debate-arena\src\app\api\sync-user\route.ts
+// File: D:\webDev Projects\live-ai-debate-arena(Incomplete)\src\app\api\sync-user\route.ts
 import * as entry from '../../../../../src/app/api/sync-user/route.js'
 import type { NextRequest } from 'next/server.js'
 

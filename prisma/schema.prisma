@@ -8,49 +8,43 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  clerkId   String   @unique
-  username  String   @unique
-  email     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  scores         Score[]
-  messages       Message[]
-  debatesCreated Debate[]    @relation("Creator")
-  debatesPro     Debate[]    @relation("ProUser")
+  id             String      @id @default(cuid())
+  clerkId        String      @unique
+  username       String      @unique
+  email          String      @unique
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
   debatesCon     Debate[]    @relation("ConUser")
-  debatesJudged  Debate[]    @relation("Judge") // ✅ Added this line
+  debatesCreated Debate[]    @relation("Creator")
+  debatesJudged  Debate[]    @relation("Judge")
+  debatesPro     Debate[]    @relation("ProUser")
+  messages       Message[]
+  scores         Score[]
   UserBadge      UserBadge[]
   Vote           Vote[]
 }
 
 model Debate {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   topic         String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  duration      Int      @default(180)
-  status        String   @default("waiting")
-  joinCodeCon   String   @unique // For Con participant
-  joinCodeJudge String   @unique // For Judge
-  isPublic      Boolean  @default(true) // Public debates can be viewed by anyone
-
-  creator   User   @relation("Creator", fields: [creatorId], references: [id])
-  creatorId String
-
-  proUser   User   @relation("ProUser", fields: [proUserId], references: [id])
-  proUserId String
-
-  conUser   User?   @relation("ConUser", fields: [conUserId], references: [id])
-  conUserId String?
-
-  judge   User?   @relation("Judge", fields: [judgeId], references: [id])
-  judgeId String?
-
-  messages Message[]
-  scores   Score[]
-  Vote     Vote[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  duration      Int       @default(180)
+  status        String    @default("waiting")
+  joinCodeCon   String    @unique
+  joinCodeJudge String    @unique
+  isPublic      Boolean   @default(true)
+  creatorId     String
+  proUserId     String
+  conUserId     String?
+  judgeId       String?
+  conUser       User?     @relation("ConUser", fields: [conUserId], references: [id])
+  creator       User      @relation("Creator", fields: [creatorId], references: [id])
+  judge         User?     @relation("Judge", fields: [judgeId], references: [id])
+  proUser       User      @relation("ProUser", fields: [proUserId], references: [id])
+  messages      Message[]
+  scores        Score[]
+  Vote          Vote[]
 }
 
 model Message {
@@ -58,12 +52,10 @@ model Message {
   content   String
   createdAt DateTime @default(now())
   role      String
-
-  sender   User   @relation(fields: [senderId], references: [id])
-  senderId String
-
-  debate   Debate @relation(fields: [debateId], references: [id])
-  debateId String
+  senderId  String
+  debateId  String
+  debate    Debate   @relation(fields: [debateId], references: [id])
+  sender    User     @relation(fields: [senderId], references: [id])
 }
 
 model Score {
@@ -73,12 +65,10 @@ model Score {
   clarity        Float
   persuasiveness Float
   tone           Float
-
-  user   User   @relation(fields: [userId], references: [id])
-  userId String
-
-  debate   Debate @relation(fields: [debateId], references: [id])
-  debateId String
+  userId         String
+  debateId       String
+  debate         Debate   @relation(fields: [debateId], references: [id])
+  user           User     @relation(fields: [userId], references: [id])
 }
 
 model Badge {
@@ -93,23 +83,23 @@ model Badge {
 
 model UserBadge {
   id       String   @id @default(cuid())
-  user     User     @relation(fields: [userId], references: [id])
   userId   String
-  badge    Badge    @relation(fields: [badgeId], references: [id])
   badgeId  String
   earnedAt DateTime @default(now())
+  badge    Badge    @relation(fields: [badgeId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, badgeId])
 }
 
 model Vote {
   id        String   @id @default(cuid())
-  user      User     @relation(fields: [userId], references: [id])
   userId    String
-  debate    Debate   @relation(fields: [debateId], references: [id])
   debateId  String
   winner    String
   createdAt DateTime @default(now())
+  debate    Debate   @relation(fields: [debateId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, debateId])
 }
