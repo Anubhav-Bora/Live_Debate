@@ -81,26 +81,22 @@ export default function CreateDebatePage() {
           <CardHeader>
             <CardTitle className="text-2xl">Debate Created!</CardTitle>
             <CardDescription>
-              Share these codes with participants:
+              Share the Debate ID and Con Code with participants:
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label>Pro Position (You)</Label>
-              <Input value="You are the pro participant" readOnly />
-            </div>
-            <div>
-              <Label>Con Position Join Code</Label>
-              <Input value={createdDebate.joinCodeCon} readOnly />
+              <Label>Debate ID</Label>
+              <Input value={createdDebate.id} readOnly />
               <p className="text-sm text-muted-foreground mt-1">
-                Share this code with the con participant
+                Anyone can join the debate room using this ID.
               </p>
             </div>
             <div>
-              <Label>Judge Join Code</Label>
-              <Input value={createdDebate.joinCodeJudge} readOnly />
+              <Label>Con Join Code</Label>
+              <Input value={createdDebate.joinCodeCon} readOnly />
               <p className="text-sm text-muted-foreground mt-1">
-                Share this code with the judge
+                Only the con participant should use this code to join as con.
               </p>
             </div>
           </CardContent>

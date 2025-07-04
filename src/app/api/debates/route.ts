@@ -57,7 +57,6 @@ export async function POST(req: Request) {
         topic,
         duration: duration || 180,
         joinCodeCon: generateCode(8),
-        joinCodeJudge: generateCode(8),
         isPublic: isPublic !== false,
         creatorId: user.id,
         proUserId: user.id,
@@ -68,7 +67,13 @@ export async function POST(req: Request) {
       }
     });
 
-    return NextResponse.json(newDebate);
+    // Return only debateId and con join code for frontend
+    return NextResponse.json({
+      id: newDebate.id,
+      joinCodeCon: newDebate.joinCodeCon,
+      duration: newDebate.duration,
+      topic: newDebate.topic
+    });
   } catch (error) {
     console.error("Error creating debate:", error);
     return NextResponse.json(

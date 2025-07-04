@@ -28,12 +28,10 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     });
 
     socketInstance.on("connect", () => {
-      console.log("✅ Connected to Socket.IO server");
       setIsConnected(true);
     });
 
     socketInstance.on("disconnect", () => {
-      console.log("❌ Disconnected from Socket.IO server");
       setIsConnected(false);
     });
 

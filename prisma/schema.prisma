@@ -14,37 +14,43 @@ model User {
   email          String      @unique
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
-  debatesCon     Debate[]    @relation("ConUser")
-  debatesCreated Debate[]    @relation("Creator")
-  debatesJudged  Debate[]    @relation("Judge")
-  debatesPro     Debate[]    @relation("ProUser")
-  messages       Message[]
   scores         Score[]
+  messages       Message[]
+  debatesCreated Debate[]    @relation("Creator")
+  debatesPro     Debate[]    @relation("ProUser")
+  debatesCon     Debate[]    @relation("ConUser")
   UserBadge      UserBadge[]
   Vote           Vote[]
+  Debate         Debate[]
 }
 
 model Debate {
-  id            String    @id @default(cuid())
-  topic         String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  duration      Int       @default(180)
-  status        String    @default("waiting")
-  joinCodeCon   String    @unique
-  joinCodeJudge String    @unique
-  isPublic      Boolean   @default(true)
-  creatorId     String
-  proUserId     String
-  conUserId     String?
-  judgeId       String?
-  conUser       User?     @relation("ConUser", fields: [conUserId], references: [id])
-  creator       User      @relation("Creator", fields: [creatorId], references: [id])
-  judge         User?     @relation("Judge", fields: [judgeId], references: [id])
-  proUser       User      @relation("ProUser", fields: [proUserId], references: [id])
-  messages      Message[]
-  scores        Score[]
-  Vote          Vote[]
+  id          String    @id @default(cuid())
+  topic       String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  duration    Int       @default(180)
+  status      String    @default("waiting")
+  startTime   DateTime?
+  endTime     DateTime?
+  aiFeedback  Json?
+  joinCodeCon String    @unique
+  isPublic    Boolean   @default(true)
+
+  creator   User   @relation("Creator", fields: [creatorId], references: [id])
+  creatorId String
+
+  proUser   User   @relation("ProUser", fields: [proUserId], references: [id])
+  proUserId String
+
+  conUser   User?   @relation("ConUser", fields: [conUserId], references: [id])
+  conUserId String?
+
+  messages Message[]
+  scores   Score[]
+  Vote     Vote[]
+  User     User?     @relation(fields: [userId], references: [id])
+  userId   String?
 }
 
 model Message {
