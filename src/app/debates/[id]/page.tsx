@@ -1,143 +1,168 @@
-"use client";
-import { useUser } from "@clerk/nextjs";
-import { useParams, useRouter } from "next/navigation";
-import { useState, useEffect, useRef } from "react";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
-import Link from "next/link";
-import VideoDebateRoom from "@/components/VideoDebateRoom";
-import { useSocket } from "@/context/SocketContext";
-import { ScrollArea } from "@/components/ui/scroll-area";
+"use client"
+
+import { useUser } from "@clerk/nextjs"
+import { useParams, useRouter } from "next/navigation"
+import { useState, useEffect, useRef } from "react"
+import { CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner"
+import Link from "next/link"
+import VideoDebateRoom from "@/components/VideoDebateRoom"
+import { useSocket } from "@/context/SocketContext"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { motion } from "framer-motion"
+import { AnimatedBackground } from "@/components/ui/animated-background"
+import { GlowCard } from "@/components/ui/glow-card"
+import { NeonButton } from "@/components/ui/neon-button"
+import {
+  ArrowLeft,
+  Users,
+  Clock,
+  MessageSquare,
+  Brain,
+  Zap,
+  Play,
+  Pause,
+  Trophy,
+  Target,
+  Lightbulb,
+  TrendingUp,
+} from "lucide-react"
 
 export default function DebatePage() {
-  const params = useParams();
-  const id = params?.id as string; // Explicitly cast to string
-  const { user } = useUser();
-  const router = useRouter();
-  const [debate, setDebate] = useState<any>(null);
-  const [role, setRole] = useState<"pro" | "con" | "viewer">("viewer");
-  const [joinCode, setJoinCode] = useState("");
-  const [loading, setLoading] = useState(true);
-  const { socket, isConnected } = useSocket();
-  const [debateStatus, setDebateStatus] = useState<string>(debate?.status || "waiting");
-  const [timer, setTimer] = useState<number | null>(null);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [isSending, setIsSending] = useState(false);
-  const [aiFeedback, setAiFeedback] = useState<any>(null);
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  const timerInterval = useRef<NodeJS.Timeout | null>(null);
+  const params = useParams()
+  const id = params?.id as string
+  const { user } = useUser()
+  const router = useRouter()
+  const [debate, setDebate] = useState<any>(null)
+  const [role, setRole] = useState<"pro" | "con" | "viewer">("viewer")
+  const [joinCode, setJoinCode] = useState("")
+  const [loading, setLoading] = useState(true)
+  const { socket, isConnected } = useSocket()
+  const [debateStatus, setDebateStatus] = useState<string>(debate?.status || "waiting")
+  const [timer, setTimer] = useState<number | null>(null)
+  const [messages, setMessages] = useState<any[]>([])
+  const [newMessage, setNewMessage] = useState("")
+  const [isSending, setIsSending] = useState(false)
+  const [aiFeedback, setAiFeedback] = useState<any>(null)
+  const [timeLeft, setTimeLeft] = useState<number | null>(null)
+  const timerInterval = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
-    if (!id) return;
-
+    if (!id) return
     const fetchDebate = async () => {
       try {
-        const res = await fetch(`/api/debates/${id}`);
+        const res = await fetch(`/api/debates/${id}`)
         if (res.ok) {
-          const data = await res.json();
-          setDebate(data);
+          const data = await res.json()
+          setDebate(data)
           if (user?.id) {
             if (data.proUser?.clerkId === user.id) {
-              setRole("pro");
+              setRole("pro")
             } else if (data.conUser?.clerkId === user.id) {
-              setRole("con");
+              setRole("con")
             }
           }
         } else {
-          setDebate(null);
-          setLoading(false);
-          toast.error(`Failed to fetch debate: ${res.status}`);
+          setDebate(null)
+          setLoading(false)
+          toast.error(`Failed to fetch debate: ${res.status}`)
         }
       } catch (error) {
-        setDebate(null);
-        setLoading(false);
-        toast.error("Error fetching debate");
+        setDebate(null)
+        setLoading(false)
+        toast.error("Error fetching debate")
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
+    }
 
-    fetchDebate();
-  }, [id, user?.id]);
+    fetchDebate()
+  }, [id, user?.id])
 
   useEffect(() => {
-    if (!socket) return;
-    const onStarted = ({ startTime, duration }: { startTime: string, duration: number }) => {
-      setDebateStatus("in-progress");
-      setTimer(duration);
-    };
+    if (!socket) return
+    const onStarted = ({ startTime, duration }: { startTime: string; duration: number }) => {
+      setDebateStatus("in-progress")
+      setTimer(duration)
+    }
+
     const onEnded = () => {
-      setDebateStatus("completed");
-      setTimer(0);
-    };
-    socket.on("debate_started", onStarted);
-    socket.on("debate_ended", onEnded);
+      setDebateStatus("completed")
+      setTimer(0)
+    }
+
+    socket.on("debate_started", onStarted)
+    socket.on("debate_ended", onEnded)
+
     return () => {
-      socket.off("debate_started", onStarted);
-      socket.off("debate_ended", onEnded);
-    };
-  }, [socket]);
+      socket.off("debate_started", onStarted)
+      socket.off("debate_ended", onEnded)
+    }
+  }, [socket])
 
   useEffect(() => {
-    if (debate?.status) setDebateStatus(debate.status);
-  }, [debate?.status]);
+    if (debate?.status) setDebateStatus(debate.status)
+  }, [debate?.status])
 
   // Fetch messages
   useEffect(() => {
-    if (!id) return;
+    if (!id) return
     const fetchMessages = async () => {
       try {
-        const res = await fetch(`/api/debates/${id}/messages`);
-        if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-        const data = await res.json();
-        setMessages(data);
+        const res = await fetch(`/api/debates/${id}/messages`)
+        if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
+        const data = await res.json()
+        setMessages(data)
       } catch (error) {
         // ignore for now
       }
-    };
-    fetchMessages();
-    const interval = setInterval(fetchMessages, 5000);
-    return () => clearInterval(interval);
-  }, [id]);
+    }
+
+    fetchMessages()
+    const interval = setInterval(fetchMessages, 5000)
+    return () => clearInterval(interval)
+  }, [id])
 
   // Timer logic
   useEffect(() => {
-    if (debateStatus !== "in-progress" || !timer) return;
-    setTimeLeft(timer);
-    if (timerInterval.current) clearInterval(timerInterval.current);
+    if (debateStatus !== "in-progress" || !timer) return
+    setTimeLeft(timer)
+    if (timerInterval.current) clearInterval(timerInterval.current)
     timerInterval.current = setInterval(() => {
       setTimeLeft((prev) => {
-        if (prev === null) return null;
+        if (prev === null) return null
         if (prev <= 1) {
-          setDebateStatus("completed");
-          clearInterval(timerInterval.current!);
-          return 0;
+          setDebateStatus("completed")
+          clearInterval(timerInterval.current!)
+          return 0
         }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => { if (timerInterval.current) clearInterval(timerInterval.current); };
-  }, [debateStatus, timer]);
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => {
+      if (timerInterval.current) clearInterval(timerInterval.current)
+    }
+  }, [debateStatus, timer])
 
   // Listen for AI feedback
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) return
     const onFeedback = (feedback: any) => {
-      setAiFeedback(feedback);
-    };
-    socket.on("debate_feedback", onFeedback);
+      setAiFeedback(feedback)
+    }
+
+    socket.on("debate_feedback", onFeedback)
     return () => {
-      socket.off("debate_feedback", onFeedback);
-    };
-  }, [socket]);
+      socket.off("debate_feedback", onFeedback)
+    }
+  }, [socket])
 
   const handleJoin = async (action: "join_con") => {
-    if (!user?.id || !id) return;
+    if (!user?.id || !id) return
     try {
       const res = await fetch(`/api/debates/${id}`, {
         method: "POST",
@@ -149,37 +174,36 @@ export default function DebatePage() {
           action,
           joinCode,
         }),
-      });
+      })
       if (res.ok) {
-        const data = await res.json();
-        setDebate(data);
-        setRole("con");
-        toast.success("Joined as Con");
+        const data = await res.json()
+        setDebate(data)
+        setRole("con")
+        toast.success("Joined as Con")
       } else {
-        let errorMsg = "Failed to join";
+        let errorMsg = "Failed to join"
         try {
-          const errorData = await res.json();
-          errorMsg = errorData.error || errorMsg;
+          const errorData = await res.json()
+          errorMsg = errorData.error || errorMsg
         } catch (e) {}
-        toast.error(errorMsg);
+        toast.error(errorMsg)
       }
     } catch (error) {
-      toast.error("An error occurred while joining");
+      toast.error("An error occurred while joining")
     }
-  };
+  }
 
   const handleStartDebate = () => {
     if (!socket || !isConnected) {
-      toast.error("Socket not connected. Please refresh the page.");
-      return;
+      toast.error("Socket not connected. Please refresh the page.")
+      return
     }
-    socket.emit("start_debate", { debateId: id });
-  };
+    socket.emit("start_debate", { debateId: id })
+  }
 
-  // Send message
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || isSending || !user?.id) return;
-    setIsSending(true);
+    if (!newMessage.trim() || isSending || !user?.id) return
+    setIsSending(true)
     try {
       const res = await fetch(`/api/debates/${id}/messages`, {
         method: "POST",
@@ -189,224 +213,468 @@ export default function DebatePage() {
           content: newMessage,
           role,
         }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      setNewMessage("");
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setNewMessage("")
     } catch (error) {
-      toast.error("Failed to send message");
+      toast.error("Failed to send message")
     } finally {
-      setIsSending(false);
+      setIsSending(false)
     }
-  };
+  }
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text)
+    toast.success(`${label} copied to clipboard!`)
+  }
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "waiting":
+        return "from-yellow-500 to-orange-500"
+      case "in-progress":
+        return "from-green-500 to-emerald-500"
+      case "completed":
+        return "from-blue-500 to-indigo-500"
+      default:
+        return "from-gray-500 to-gray-600"
+    }
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "waiting":
+        return <Clock className="w-5 h-5" />
+      case "in-progress":
+        return <Play className="w-5 h-5" />
+      case "completed":
+        return <Trophy className="w-5 h-5" />
+      default:
+        return <Pause className="w-5 h-5" />
+    }
+  }
 
   if (loading) {
-    return <div className="container mx-auto px-4 py-8">Loading...</div>;
+    return (
+      <div className="min-h-screen relative overflow-hidden">
+        <AnimatedBackground />
+        <div className="relative z-10 container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
+          <GlowCard>
+            <div className="flex items-center space-x-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+              <span className="text-white text-lg">Loading debate arena...</span>
+            </div>
+          </GlowCard>
+        </div>
+      </div>
+    )
   }
 
   if (!debate) {
-    return <div className="container mx-auto px-4 py-8 text-red-500 font-bold">Debate not found or failed to load. Please check the debate ID or try again later.</div>;
+    return (
+      <div className="min-h-screen relative overflow-hidden">
+        <AnimatedBackground />
+        <div className="relative z-10 container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
+          <GlowCard className="text-center">
+            <div className="text-red-400 text-xl font-bold mb-4">Debate Not Found</div>
+            <p className="text-gray-300 mb-6">The debate you're looking for doesn't exist or failed to load.</p>
+            <Link href="/debates">
+              <NeonButton>
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Debates
+              </NeonButton>
+            </Link>
+          </GlowCard>
+        </div>
+      </div>
+    )
   }
 
-  // Show join codes for debugging (development only)
-  const isDev = process.env.NODE_ENV !== "production";
+  const isDev = process.env.NODE_ENV !== "production"
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">{debate.topic}</h1>
-        <Button variant="outline" onClick={() => router.push("/debates")}>
-          Back to Debates
-        </Button>
-      </div>
-      
-      {isDev && (
-        <div className="mb-4 p-2 bg-yellow-100 border border-yellow-400 rounded text-xs">
-          <div><b>Debug:</b> Join code for Con: <span className="font-mono">{debate.joinCodeCon}</span></div>
-          <div>Debate ID: <span className="font-mono">{debate.id}</span></div>
-        </div>
-      )}
+    <div className="min-h-screen relative overflow-hidden">
+      <AnimatedBackground />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Pro</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {debate.proUser ? (
-              <div className="flex items-center gap-2">
-                <span>{debate.proUser.username}</span>
-                {debate.proUser.clerkId === user?.id && (
-                  <Badge variant="default">You</Badge>
-                )}
-              </div>
-            ) : (
-              <div>Open</div>
-            )}
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Con</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {debate.conUser ? (
-              <div className="flex items-center gap-2">
-                <span>{debate.conUser.username}</span>
-                {debate.conUser.clerkId === user?.id && (
-                  <Badge variant="default">You</Badge>
-                )}
-              </div>
-            ) : (
-              <div>Open</div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Debug Info */}
-      <div className="mb-2 p-2 bg-gray-100 rounded text-xs">
-        <b>Role:</b> {role} | <b>Status:</b> {debateStatus} | <b>Timer:</b> {timeLeft !== null ? `${timeLeft}s` : "-"}
-      </div>
-      {/* Timer Section */}
-      <div className="mb-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Debate Timer</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-mono">
-              {debateStatus === "in-progress" && timeLeft !== null ? `${timeLeft}s` : `${debate.duration} seconds`}
-            </div>
-            {debateStatus === "completed" && <div className="text-red-600 font-semibold">Debate Ended</div>}
-          </CardContent>
-        </Card>
-      </div>
-
-      {role === "viewer" && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Join Debate</CardTitle>
-            <CardDescription>
-              Join as Con (with code) or as Viewer (no code required)
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!debate.conUser && (
-              <div>
-                <Label>Join as Con Participant</Label>
-                <div className="flex gap-2 mt-2">
-                  <Input
-                    value={joinCode}
-                    onChange={(e) => setJoinCode(e.target.value)}
-                    placeholder={isDev ? `Enter con join code (see above)` : "Enter con join code"}
-                  />
-                  <Button 
-                    onClick={() => handleJoin("join_con")}
-                    disabled={!joinCode.trim() || !!debate.conUser}
-                  >
-                    Join as Con
-                  </Button>
-                </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Make sure you enter the exact join code (case-sensitive).
-                </div>
-              </div>
-            )}
-            <div>
-              <Label>Or join as Viewer</Label>
-              <Button className="ml-2" onClick={() => setRole("viewer")}>Join as Viewer</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {id && (role === "pro" || role === "con") && user?.id && (
-        <>
-          {/* Start Debate button for pro user when waiting */}
-          {role === "pro" && debateStatus === "waiting" && (
-            <div className="mb-4 flex justify-center">
-              <Button onClick={handleStartDebate} disabled={!isConnected}>
-                Start Debate
-              </Button>
-            </div>
-          )}
-          <VideoDebateRoom 
-            debateId={id} 
-            userId={user.id} 
-            role={role}
-          />
-          {/* Chat Box */}
-          <div className="mt-6 border rounded-lg bg-white">
-            <div className="p-2 border-b font-semibold">Chat</div>
-            <ScrollArea className="h-64 p-4">
-              {messages.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  No messages yet. Start the conversation!
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`p-3 rounded-lg max-w-[80%] ${
-                        message.role === "pro"
-                          ? "bg-green-100"
-                          : message.role === "con"
-                            ? "bg-red-100"
-                            : "bg-gray-100"
-                      }`}
-                    >
-                      <div className="font-medium text-sm flex items-center gap-2">
-                        <span>{message.sender?.username || message.role}</span>
-                        <Badge variant="outline" className="text-xs px-1.5 py-0.5">
-                          {message.role}
-                        </Badge>
-                      </div>
-                      <p className="whitespace-pre-wrap mt-1">{message.content}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-            <div className="p-4 border-t flex gap-2">
-              <Input
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder={debateStatus === "completed" ? "Debate has ended" : role === "pro" ? "State your argument as Pro..." : role === "con" ? "Counter the argument as Con..." : "Viewers cannot send messages"}
-                disabled={debateStatus !== "in-progress" || !(role === "pro" || role === "con")}
-              />
-              <Button onClick={handleSendMessage} disabled={debateStatus !== "in-progress" || isSending || !newMessage.trim() || !(role === "pro" || role === "con")}>Send</Button>
+      <div className="relative z-10 container mx-auto px-4 py-8">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4"
+        >
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 leading-tight">{debate.topic}</h1>
+            <div className="flex items-center gap-4">
+              <Badge className={`bg-gradient-to-r ${getStatusColor(debateStatus)} text-white px-3 py-1`}>
+                {getStatusIcon(debateStatus)}
+                <span className="ml-2 capitalize">{debateStatus.replace("-", " ")}</span>
+              </Badge>
+              <span className="text-gray-400 text-sm">ID: {id}</span>
             </div>
           </div>
-          {/* AI Feedback after debate ends */}
-          {debateStatus === "completed" && aiFeedback && (
-            <div className="border rounded-lg p-4 my-4 bg-blue-50">
-              <h3 className="font-bold mb-2">AI Feedback</h3>
-              <div className="mb-2">
-                <h4 className="font-semibold">Pro</h4>
-                <div>Score: <span className="font-mono">{aiFeedback.pro?.score ?? '-'}</span></div>
-                <div>Mistakes: <span className="font-mono">{aiFeedback.pro?.mistakes?.join(", ") ?? '-'}</span></div>
-                <div>Improvements: <span className="font-mono">{aiFeedback.pro?.improvements?.join(", ") ?? '-'}</span></div>
-                <div>Feedback: <span className="font-mono">{aiFeedback.pro?.feedback ?? '-'}</span></div>
+          <NeonButton variant="outline" onClick={() => router.push("/debates")}>
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Arena
+          </NeonButton>
+        </motion.div>
+
+        {/* Debug Info for Development */}
+        {isDev && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6">
+            <GlowCard className="bg-yellow-500/10 border-yellow-500/30">
+              <div className="text-yellow-300 text-sm">
+                <div>
+                  <strong>Debug:</strong> Join code for Con: <span className="font-mono">{debate.joinCodeCon}</span>
+                </div>
+                <div>
+                  Debate ID: <span className="font-mono">{debate.id}</span>
+                </div>
               </div>
-              <div>
-                <h4 className="font-semibold">Con</h4>
-                <div>Score: <span className="font-mono">{aiFeedback.con?.score ?? '-'}</span></div>
-                <div>Mistakes: <span className="font-mono">{aiFeedback.con?.mistakes?.join(", ") ?? '-'}</span></div>
-                <div>Improvements: <span className="font-mono">{aiFeedback.con?.improvements?.join(", ") ?? '-'}</span></div>
-                <div>Feedback: <span className="font-mono">{aiFeedback.con?.feedback ?? '-'}</span></div>
-              </div>
+            </GlowCard>
+          </motion.div>
+        )}
+
+        {/* Participants Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8"
+        >
+          {/* Pro Participant */}
+          <GlowCard glowColor="rgba(34, 197, 94, 0.3)">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-green-400">Pro Position</h3>
+              <Target className="w-6 h-6 text-green-400" />
             </div>
-          )}
-        </>
-      )}
-      {id && role === "viewer" && (
-        <div className="border rounded-lg p-8 text-center text-lg text-gray-600 mt-8">
-          Only Pro and Con participants can join the live video debate.<br />
-          Please wait for the debate to finish to see the AI feedback.
-        </div>
-      )}
+            {debate.proUser ? (
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center text-white font-bold text-lg">
+                  {debate.proUser.username.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div className="text-white font-semibold">{debate.proUser.username}</div>
+                  {debate.proUser.clerkId === user?.id && (
+                    <Badge className="bg-green-500/20 text-green-300 border-green-500/30">You</Badge>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-400 italic">Waiting for Pro participant...</div>
+            )}
+          </GlowCard>
+
+          {/* Con Participant */}
+          <GlowCard glowColor="rgba(239, 68, 68, 0.3)">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-red-400">Con Position</h3>
+              <Zap className="w-6 h-6 text-red-400" />
+            </div>
+            {debate.conUser ? (
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-r from-red-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg">
+                  {debate.conUser.username.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div className="text-white font-semibold">{debate.conUser.username}</div>
+                  {debate.conUser.clerkId === user?.id && (
+                    <Badge className="bg-red-500/20 text-red-300 border-red-500/30">You</Badge>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-400 italic">Waiting for Con participant...</div>
+            )}
+          </GlowCard>
+        </motion.div>
+
+        {/* Timer Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="mb-8"
+        >
+          <GlowCard className="text-center">
+            <div className="flex items-center justify-center gap-4 mb-4">
+              <Clock className="w-8 h-8 text-indigo-400" />
+              <h3 className="text-2xl font-bold text-white">Debate Timer</h3>
+            </div>
+            <div className="text-4xl md:text-6xl font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-2">
+              {debateStatus === "in-progress" && timeLeft !== null ? formatTime(timeLeft) : formatTime(debate.duration)}
+            </div>
+            {debateStatus === "completed" && <div className="text-red-400 font-semibold text-lg">Debate Concluded</div>}
+            {debateStatus === "waiting" && (
+              <div className="text-yellow-400 font-semibold text-lg">Preparing to Begin</div>
+            )}
+          </GlowCard>
+        </motion.div>
+
+        {/* Join Section for Viewers */}
+        {role === "viewer" && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="mb-8"
+          >
+            <GlowCard>
+              <CardHeader>
+                <CardTitle className="text-2xl font-bold text-white flex items-center gap-2">
+                  <Users className="w-6 h-6" />
+                  Join the Debate
+                </CardTitle>
+                <CardDescription className="text-gray-300">Participate as Con or observe as a Viewer</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {!debate.conUser && (
+                  <div>
+                    <Label className="text-white font-semibold mb-2 block">Join as Con Participant</Label>
+                    <div className="flex gap-3">
+                      <Input
+                        value={joinCode}
+                        onChange={(e) => setJoinCode(e.target.value)}
+                        placeholder={isDev ? `Enter con join code (see above)` : "Enter con join code"}
+                        className="bg-white/5 border-white/20 text-white placeholder:text-gray-400"
+                      />
+                      <NeonButton
+                        onClick={() => handleJoin("join_con")}
+                        disabled={!joinCode.trim() || !!debate.conUser}
+                      >
+                        Join as Con
+                      </NeonButton>
+                    </div>
+                    <div className="text-xs text-gray-400 mt-2">Enter the exact join code (case-sensitive)</div>
+                  </div>
+                )}
+                <div>
+                  <Label className="text-white font-semibold mb-2 block">Or observe the debate</Label>
+                  <NeonButton variant="outline" onClick={() => setRole("viewer")}>
+                    <Users className="w-4 h-4 mr-2" />
+                    Join as Viewer
+                  </NeonButton>
+                </div>
+              </CardContent>
+            </GlowCard>
+          </motion.div>
+        )}
+
+        {/* Video Debate Room */}
+        {id && (role === "pro" || role === "con") && user?.id && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="mb-8"
+          >
+            {/* Start Debate button for pro user when waiting */}
+            {role === "pro" && debateStatus === "waiting" && (
+              <div className="mb-6 flex justify-center">
+                <NeonButton onClick={handleStartDebate} disabled={!isConnected} size="lg">
+                  <Play className="w-5 h-5 mr-2" />
+                  Launch Debate
+                </NeonButton>
+              </div>
+            )}
+
+            <GlowCard className="p-0 overflow-hidden">
+              <VideoDebateRoom debateId={id} userId={user.id} role={role} />
+            </GlowCard>
+
+            {/* Chat Section */}
+            <GlowCard className="mt-6">
+              <div className="flex items-center gap-2 p-4 border-b border-white/10">
+                <MessageSquare className="w-5 h-5 text-indigo-400" />
+                <h3 className="font-semibold text-white">Live Discussion</h3>
+              </div>
+              <ScrollArea className="h-64 p-4">
+                {messages.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400">
+                    <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No messages yet. Start the conversation!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {messages.map((message) => (
+                      <motion.div
+                        key={message.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className={`p-3 rounded-lg max-w-[80%] ${
+                          message.role === "pro"
+                            ? "bg-green-500/20 border border-green-500/30"
+                            : message.role === "con"
+                              ? "bg-red-500/20 border border-red-500/30"
+                              : "bg-gray-500/20 border border-gray-500/30"
+                        }`}
+                      >
+                        <div className="font-medium text-sm flex items-center gap-2 mb-1">
+                          <span className="text-white">{message.sender?.username || message.role}</span>
+                          <Badge variant="outline" className="text-xs px-1.5 py-0.5">
+                            {message.role}
+                          </Badge>
+                        </div>
+                        <p className="whitespace-pre-wrap text-gray-200">{message.content}</p>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+              <div className="p-4 border-t border-white/10 flex gap-3">
+                <Input
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder={
+                    debateStatus === "completed"
+                      ? "Debate has ended"
+                      : role === "pro"
+                        ? "State your argument as Pro..."
+                        : role === "con"
+                          ? "Counter the argument as Con..."
+                          : "Viewers cannot send messages"
+                  }
+                  disabled={debateStatus !== "in-progress" || !(role === "pro" || role === "con")}
+                  className="bg-white/5 border-white/20 text-white placeholder:text-gray-400"
+                />
+                <NeonButton
+                  onClick={handleSendMessage}
+                  disabled={
+                    debateStatus !== "in-progress" ||
+                    isSending ||
+                    !newMessage.trim() ||
+                    !(role === "pro" || role === "con")
+                  }
+                >
+                  Send
+                </NeonButton>
+              </div>
+            </GlowCard>
+
+            {/* AI Feedback after debate ends */}
+            {debateStatus === "completed" && aiFeedback && (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
+                <GlowCard glowColor="rgba(139, 92, 246, 0.4)">
+                  <div className="flex items-center gap-2 mb-6">
+                    <Brain className="w-6 h-6 text-purple-400" />
+                    <h3 className="text-2xl font-bold text-white">AI Performance Analysis</h3>
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {/* Pro Feedback */}
+                    <div className="space-y-4">
+                      <h4 className="text-xl font-semibold text-green-400 flex items-center gap-2">
+                        <Target className="w-5 h-5" />
+                        Pro Analysis
+                      </h4>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Trophy className="w-4 h-4 text-yellow-400" />
+                          <span className="text-gray-300">Score:</span>
+                          <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
+                            {aiFeedback.pro?.score ?? "-"}
+                          </Badge>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <TrendingUp className="w-4 h-4 text-red-400" />
+                            <span className="text-gray-300 font-medium">Areas for Improvement:</span>
+                          </div>
+                          <p className="text-gray-400 text-sm">
+                            {aiFeedback.pro?.mistakes?.join(", ") ?? "None identified"}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Lightbulb className="w-4 h-4 text-blue-400" />
+                            <span className="text-gray-300 font-medium">Suggestions:</span>
+                          </div>
+                          <p className="text-gray-400 text-sm">
+                            {aiFeedback.pro?.improvements?.join(", ") ?? "Keep up the great work!"}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Brain className="w-4 h-4 text-purple-400" />
+                            <span className="text-gray-300 font-medium">Detailed Feedback:</span>
+                          </div>
+                          <p className="text-gray-400 text-sm">
+                            {aiFeedback.pro?.feedback ?? "Analysis in progress..."}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Con Feedback */}
+                    <div className="space-y-4">
+                      <h4 className="text-xl font-semibold text-red-400 flex items-center gap-2">
+                        <Zap className="w-5 h-5" />
+                        Con Analysis
+                      </h4>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Trophy className="w-4 h-4 text-yellow-400" />
+                          <span className="text-gray-300">Score:</span>
+                          <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
+                            {aiFeedback.con?.score ?? "-"}
+                          </Badge>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <TrendingUp className="w-4 h-4 text-red-400" />
+                            <span className="text-gray-300 font-medium">Areas for Improvement:</span>
+                          </div>
+                          <p className="text-gray-400 text-sm">
+                            {aiFeedback.con?.mistakes?.join(", ") ?? "None identified"}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Lightbulb className="w-4 h-4 text-blue-400" />
+                            <span className="text-gray-300 font-medium">Suggestions:</span>
+                          </div>
+                          <p className="text-gray-400 text-sm">
+                            {aiFeedback.con?.improvements?.join(", ") ?? "Keep up the great work!"}
+                          </p>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Brain className="w-4 h-4 text-purple-400" />
+                            <span className="text-gray-300 font-medium">Detailed Feedback:</span>
+                          </div>
+                          <p className="text-gray-400 text-sm">
+                            {aiFeedback.con?.feedback ?? "Analysis in progress..."}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </GlowCard>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Viewer Message */}
+        {id && role === "viewer" && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
+            <GlowCard className="text-center py-12">
+              <Users className="w-16 h-16 mx-auto mb-4 text-indigo-400 opacity-50" />
+              <h3 className="text-2xl font-bold text-white mb-4">Spectator Mode</h3>
+              <p className="text-gray-300 text-lg mb-6">
+                Only Pro and Con participants can join the live video debate.
+              </p>
+              <p className="text-gray-400">Please wait for the debate to finish to see the AI feedback and analysis.</p>
+            </GlowCard>
+          </motion.div>
+        )}
+      </div>
     </div>
-  );
+  )
 }

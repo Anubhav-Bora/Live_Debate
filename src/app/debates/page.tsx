@@ -1,210 +1,281 @@
-"use client";
-import { useUser } from "@clerk/nextjs";
-import Link from "next/link";
-import { motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { useState, useEffect } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
+"use client"
+
+import { useUser } from "@clerk/nextjs"
+import Link from "next/link"
+import { motion } from "framer-motion"
+import { CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { useState, useEffect } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { AnimatedBackground } from "@/components/ui/animated-background"
+import { GlowCard } from "@/components/ui/glow-card"
+import { NeonButton } from "@/components/ui/neon-button"
+import { Search, Plus, Filter, MessageSquare, Clock, Eye, Zap, Target, Trophy } from "lucide-react"
 
 interface Debate {
-  id: string;
-  topic: string;
-  status: "waiting" | "in-progress" | "completed";
-  createdAt: string;
-  proUser: { username: string } | null;
-  conUser: { username: string } | null;
-  _count: { messages: number };
+  id: string
+  topic: string
+  status: "waiting" | "in-progress" | "completed"
+  createdAt: string
+  proUser: { username: string } | null
+  conUser: { username: string } | null
+  _count: { messages: number }
 }
-interface DebateRoomProps {
-  debate: Debate; // Make sure this matches your Debate type
-  userId?: string;
-  isPro?: boolean;
-  isCon?: boolean;
-}
+
 export default function DebatesPage() {
-  const { isSignedIn } = useUser();
-  const [debates, setDebates] = useState<Debate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filter, setFilter] = useState<"all" | "waiting" | "in-progress" | "completed">("all");
+  const { isSignedIn } = useUser()
+  const [debates, setDebates] = useState<Debate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [filter, setFilter] = useState<"all" | "waiting" | "in-progress" | "completed">("all")
 
   useEffect(() => {
     const fetchDebates = async () => {
       try {
-        const res = await fetch("/api/debates");
+        const res = await fetch("/api/debates")
         if (res.ok) {
-          const data = await res.json();
-          setDebates(data);
+          const data = await res.json()
+          setDebates(data)
         }
       } catch (error) {
-        console.error("Error fetching debates:", error);
+        console.error("Error fetching debates:", error)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
-    fetchDebates();
-  }, []);
-
-  const filteredDebates = debates.filter(debate => {
-    const matchesSearch = debate.topic.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filter === "all" || debate.status === filter;
-    return matchesSearch && matchesFilter;
-  });
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "waiting": return "bg-yellow-100 text-yellow-800";
-      case "in-progress": return "bg-blue-100 text-blue-800";
-      case "completed": return "bg-green-100 text-green-800";
-      default: return "bg-gray-100 text-gray-800";
     }
-  };
+
+    fetchDebates()
+  }, [])
+
+  const filteredDebates = debates.filter((debate) => {
+    const matchesSearch = debate.topic.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesFilter = filter === "all" || debate.status === filter
+    return matchesSearch && matchesFilter
+  })
+
+  const getStatusConfig = (status: string) => {
+    switch (status) {
+      case "waiting":
+        return {
+          color: "from-yellow-500 to-orange-500",
+          icon: <Clock className="w-4 h-4" />,
+          text: "Waiting",
+          glow: "rgba(245, 158, 11, 0.3)",
+        }
+      case "in-progress":
+        return {
+          color: "from-green-500 to-emerald-500",
+          icon: <Zap className="w-4 h-4" />,
+          text: "Live",
+          glow: "rgba(34, 197, 94, 0.3)",
+        }
+      case "completed":
+        return {
+          color: "from-blue-500 to-indigo-500",
+          icon: <Trophy className="w-4 h-4" />,
+          text: "Completed",
+          glow: "rgba(59, 130, 246, 0.3)",
+        }
+      default:
+        return {
+          color: "from-gray-500 to-gray-600",
+          icon: <Clock className="w-4 h-4" />,
+          text: "Unknown",
+          glow: "rgba(107, 114, 128, 0.3)",
+        }
+    }
+  }
+
+  const filterOptions = [
+    { value: "all", label: "All Arenas", icon: <Filter className="w-4 h-4" /> },
+    { value: "waiting", label: "Waiting", icon: <Clock className="w-4 h-4" /> },
+    { value: "in-progress", label: "Live", icon: <Zap className="w-4 h-4" /> },
+    { value: "completed", label: "Completed", icon: <Trophy className="w-4 h-4" /> },
+  ]
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <Skeleton className="h-10 w-64" />
-          {isSignedIn && <Skeleton className="h-10 w-40" />}
-        </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-6 w-full" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-4 w-3/4 mb-2" />
-                <Skeleton className="h-4 w-1/2" />
-              </CardContent>
-              <CardFooter>
-                <Skeleton className="h-4 w-20" />
-              </CardFooter>
-            </Card>
-          ))}
+      <div className="min-h-screen relative overflow-hidden">
+        <AnimatedBackground />
+        <div className="relative z-10 container mx-auto px-4 py-8">
+          <div className="flex justify-between items-center mb-8">
+            <Skeleton className="h-12 w-64 bg-white/10" />
+            {isSignedIn && <Skeleton className="h-10 w-40 bg-white/10" />}
+          </div>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {[...Array(6)].map((_, i) => (
+              <GlowCard key={i}>
+                <CardHeader>
+                  <Skeleton className="h-6 w-full bg-white/10" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-4 w-3/4 mb-2 bg-white/10" />
+                  <Skeleton className="h-4 w-1/2 bg-white/10" />
+                </CardContent>
+                <CardFooter>
+                  <Skeleton className="h-4 w-20 bg-white/10" />
+                </CardFooter>
+              </GlowCard>
+            ))}
+          </div>
         </div>
       </div>
-    );
+    )
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-        <motion.h1 
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="text-3xl font-bold"
-        >
-          Live Debate Arena
-        </motion.h1>
-        <div className="flex gap-4 w-full md:w-auto">
-          {isSignedIn && (
-            <Link href="/debates/create">
-              <Button className="whitespace-nowrap">
-                Create New Debate
-              </Button>
-            </Link>
-          )}
-        </div>
-      </div>
+    <div className="min-h-screen relative overflow-hidden">
+      <AnimatedBackground />
 
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <Input
-          placeholder="Search debates..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="md:w-64"
-        />
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {["all", "waiting", "in-progress", "completed"].map((f) => (
-            <Button
-              key={f}
-              variant={filter === f ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFilter(f as any)}
-              className="capitalize"
-            >
-              {f.replace("-", " ")}
-            </Button>
-          ))}
-        </div>
-      </div>
+      <div className="relative z-10 container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+            <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">Debate Arena</h1>
+            <p className="text-xl text-gray-300">Join the intellectual battleground</p>
+          </motion.div>
 
-      {filteredDebates.length === 0 ? (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="text-center py-16"
-        >
-          <h3 className="text-xl font-medium mb-2">No debates found</h3>
-          <p className="text-gray-600">
-            {filter === "all" 
-              ? "Create a new debate to get started" 
-              : `No ${filter.replace("-", " ")} debates available`}
-          </p>
-        </motion.div>
-      ) : (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredDebates.map((debate) => (
-            <motion.div
-              key={debate.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              whileHover={{ y: -5 }}
-            >
-              <Link href={`/debates/${debate.id}`}>
-                <Card className="h-full transition-all hover:shadow-lg">
-                  <CardHeader className="pb-2">
-                    <div className="flex justify-between items-start">
-                      <CardTitle className="line-clamp-2 text-lg">
-                        {debate.topic}
-                      </CardTitle>
-                      <Badge className={getStatusColor(debate.status)}>
-                        {debate.status.replace("-", " ")}
-                      </Badge>
-                    </div>
-                    <CardDescription>
-                      {new Date(debate.createdAt).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="flex items-center">
-                        <span className="font-medium text-blue-600 w-16">Pro:</span>
-                        <span className="truncate">
-                          {debate.proUser?.username || "Open"}
-                        </span>
-                      </div>
-                      <div className="flex items-center">
-                        <span className="font-medium text-red-600 w-16">Con:</span>
-                        <span className="truncate">
-                          {debate.conUser?.username || "Open"}
-                        </span>
-                      </div>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex justify-between">
-                    <div className="text-sm text-gray-500">
-                      {debate._count.messages} messages
-                    </div>
-                    <Button variant="outline" size="sm">
-                      View
-                    </Button>
-                  </CardFooter>
-                </Card>
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex gap-4">
+            {isSignedIn && (
+              <Link href="/debates/create">
+                <NeonButton size="lg">
+                  <Plus className="w-5 h-5 mr-2" />
+                  Create Arena
+                </NeonButton>
               </Link>
-            </motion.div>
-          ))}
+            )}
+          </motion.div>
         </div>
-      )}
+
+        {/* Search and Filter */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="mb-8"
+        >
+          <GlowCard>
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Input
+                  placeholder="Search debate topics..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 bg-white/5 border-white/20 text-white placeholder:text-gray-400"
+                />
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {filterOptions.map((option) => (
+                  <NeonButton
+                    key={option.value}
+                    variant={filter === option.value ? "primary" : "outline"}
+                    size="sm"
+                    onClick={() => setFilter(option.value as any)}
+                    className="whitespace-nowrap"
+                  >
+                    {option.icon}
+                    <span className="ml-2">{option.label}</span>
+                  </NeonButton>
+                ))}
+              </div>
+            </div>
+          </GlowCard>
+        </motion.div>
+
+        {/* Debates Grid */}
+        {filteredDebates.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="text-center py-16"
+          >
+            <GlowCard className="max-w-md mx-auto">
+              <MessageSquare className="w-16 h-16 mx-auto mb-4 text-indigo-400 opacity-50" />
+              <h3 className="text-2xl font-bold text-white mb-2">No Arenas Found</h3>
+              <p className="text-gray-300 mb-6">
+                {filter === "all"
+                  ? "Be the first to create a debate arena"
+                  : `No ${filter.replace("-", " ")} debates available`}
+              </p>
+              {isSignedIn && (
+                <Link href="/debates/create">
+                  <NeonButton>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create First Arena
+                  </NeonButton>
+                </Link>
+              )}
+            </GlowCard>
+          </motion.div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {filteredDebates.map((debate, index) => {
+              const statusConfig = getStatusConfig(debate.status)
+
+              return (
+                <motion.div
+                  key={debate.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: index * 0.1 }}
+                  whileHover={{ y: -5 }}
+                >
+                  <Link href={`/debates/${debate.id}`}>
+                    <GlowCard glowColor={statusConfig.glow} className="h-full cursor-pointer group">
+                      <CardHeader className="pb-3">
+                        <div className="flex justify-between items-start mb-2">
+                          <Badge className={`bg-gradient-to-r ${statusConfig.color} text-white px-3 py-1`}>
+                            {statusConfig.icon}
+                            <span className="ml-2">{statusConfig.text}</span>
+                          </Badge>
+                          <div className="text-xs text-gray-400">
+                            {new Date(debate.createdAt).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </div>
+                        </div>
+                        <CardTitle className="line-clamp-2 text-lg text-white group-hover:text-indigo-300 transition-colors">
+                          {debate.topic}
+                        </CardTitle>
+                      </CardHeader>
+
+                      <CardContent className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="flex items-center gap-2">
+                            <Target className="w-4 h-4 text-green-400" />
+                            <span className="text-sm text-gray-300">Pro:</span>
+                            <span className="text-sm text-white truncate">{debate.proUser?.username || "Open"}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Zap className="w-4 h-4 text-red-400" />
+                            <span className="text-sm text-gray-300">Con:</span>
+                            <span className="text-sm text-white truncate">{debate.conUser?.username || "Open"}</span>
+                          </div>
+                        </div>
+                      </CardContent>
+
+                      <CardFooter className="flex justify-between items-center pt-3">
+                        <div className="flex items-center gap-1 text-sm text-gray-400">
+                          <MessageSquare className="w-4 h-4" />
+                          <span>{debate._count.messages}</span>
+                        </div>
+                        <NeonButton variant="outline" size="sm">
+                          <Eye className="w-4 h-4 mr-2" />
+                          Enter
+                        </NeonButton>
+                      </CardFooter>
+                    </GlowCard>
+                  </Link>
+                </motion.div>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
-  );
+  )
 }

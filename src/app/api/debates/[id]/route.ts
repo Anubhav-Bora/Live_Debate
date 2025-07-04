@@ -62,6 +62,18 @@ export async function POST(
     let updatedDebate;
 
     if (action === "join_con") {
+      if (debate.status !== "waiting") {
+        return NextResponse.json(
+          { error: "Cannot join: Debate is not open for joining." },
+          { status: 400 }
+        );
+      }
+      if (debate.proUserId === user.id || debate.conUserId === user.id) {
+        return NextResponse.json(
+          { error: "You are already a participant in this debate." },
+          { status: 400 }
+        );
+      }
       if (!joinCode || joinCode !== debate.joinCodeCon) {
         return NextResponse.json(
           { error: "Invalid join code for Con position" },
@@ -87,6 +99,19 @@ export async function POST(
         }
       });
     } else if (action === "end") {
+      if (debate.status === "completed") {
+        return NextResponse.json({ error: "Debate is already completed." }, { status: 400 });
+      }
+      // Only allow pro, con, or creator to end the debate
+      const allowedUserIds = [debate.proUserId, debate.conUserId, debate.creatorId];
+      if (!allowedUserIds.includes(user.id)) {
+        return NextResponse.json({ error: "You are not authorized to end this debate." }, { status: 403 });
+      }
+      // Require at least 4 messages before scoring
+      const messageCount = await prisma.message.count({ where: { debateId: debate.id } });
+      if (messageCount < 4) {
+        return NextResponse.json({ error: "Debate must have at least 4 messages before it can be ended and scored." }, { status: 400 });
+      }
       updatedDebate = await prisma.debate.update({
         where: { id: params.id },
         data: { status: "completed" },
@@ -202,7 +227,7 @@ export async function POST(
 
     return NextResponse.json(updatedDebate);
   } catch (error) {
-    console.error("Error updating debate:", error);
+    console.error("Error updating debate:", { error, userId, debateId: params.id, action });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

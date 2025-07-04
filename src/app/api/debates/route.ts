@@ -44,6 +44,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Input validation
+    if (!topic || typeof topic !== 'string' || topic.trim().length < 5 || topic.trim().length > 100) {
+      return NextResponse.json({ error: "Debate topic must be between 5 and 100 characters." }, { status: 400 });
+    }
+
     const user = await prisma.user.findUnique({ 
       where: { clerkId: userId }
     });
@@ -52,9 +57,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Check for duplicate debates by the same user with the same topic in the last 10 minutes
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const duplicate = await prisma.debate.findFirst({
+      where: {
+        topic: topic.trim(),
+        creatorId: user.id,
+        createdAt: { gte: tenMinutesAgo }
+      }
+    });
+    if (duplicate) {
+      return NextResponse.json({ error: "You have already created a debate with this topic recently. Please wait before creating another." }, { status: 400 });
+    }
+
     const newDebate = await prisma.debate.create({
       data: {
-        topic,
+        topic: topic.trim(),
         duration: duration || 180,
         joinCodeCon: generateCode(8),
         isPublic: isPublic !== false,
@@ -75,7 +93,7 @@ export async function POST(req: Request) {
       topic: newDebate.topic
     });
   } catch (error) {
-    console.error("Error creating debate:", error);
+    console.error("Error creating debate:", { error, userId, topic });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

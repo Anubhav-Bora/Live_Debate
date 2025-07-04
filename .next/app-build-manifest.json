@@ -11,40 +11,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/api/sync-user/route": [
+    "/sign-up/[[...sign-up]]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/sync-user/route.js"
-    ],
-    "/debates/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/debates/page.js"
-    ],
-    "/api/debates/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/debates/route.js"
-    ],
-    "/debates/create/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/debates/create/page.js"
-    ],
-    "/debates/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/debates/[id]/page.js"
-    ],
-    "/api/debates/[id]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/debates/[id]/route.js"
-    ],
-    "/api/debates/[id]/messages/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/debates/[id]/messages/route.js"
+      "static/chunks/app/sign-up/[[...sign-up]]/page.js"
     ]
   }
 }

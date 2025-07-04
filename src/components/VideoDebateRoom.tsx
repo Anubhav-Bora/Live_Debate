@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import SimplePeer, { SignalData } from "simple-peer";
+import SimplePeer from "simple-peer";
 import { useSocket } from "@/context/SocketContext";
 import { Button } from "@/components/ui/button";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
@@ -14,7 +14,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
   const { socket } = useSocket();
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [peer, setPeer] = useState<SimplePeer.Instance | null>(null);
+  const [peer, setPeer] = useState<any>(null);
   const [connected, setConnected] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -57,7 +57,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     const p = new SimplePeer({ initiator, trickle: false, stream });
     setPeer(p);
 
-    p.on("signal", (data: SignalData) => {
+    p.on("signal", (data: any) => {
       console.log("[VideoDebateRoom] Sending signal:", data);
       socket.emit("signal", { debateId, userId, signal: data });
     });
