@@ -23,12 +23,31 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
   const [mediaError, setMediaError] = useState<string | null>(null);
   const lastLocalStream = useRef<MediaStream | null>(null);
   const lastRemoteStream = useRef<MediaStream | null>(null);
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
 
-  // Get user media
+  // Get available video devices
   useEffect(() => {
-    console.log("[VideoDebateRoom] Requesting camera/mic access...");
+    navigator.mediaDevices.enumerateDevices()
+      .then(devices => {
+        const videoInputs = devices.filter(device => device.kind === 'videoinput');
+        setVideoDevices(videoInputs);
+        // Select the first non-virtual camera (usually the real one)
+        const realCamera = videoInputs.find(device => 
+          !device.label.toLowerCase().includes('virtual') && 
+          !device.label.toLowerCase().includes('obs')
+        );
+        setSelectedDeviceId(realCamera?.deviceId || videoInputs[0]?.deviceId || "");
+      })
+      .catch(err => console.error("Error enumerating devices:", err));
+  }, []);
+
+  // Get user media with selected device
+  useEffect(() => {
+    if (!selectedDeviceId) return;
+    
     navigator.mediaDevices.getUserMedia({ 
-      video: { deviceId: { exact: '7159eab548472b2bcb27c174c30caa6f0e1e745b2f135c97f50f7b2827bf3229' } }, 
+      video: { deviceId: { exact: selectedDeviceId } }, 
       audio: true 
     })
       .then((mediaStream) => {
@@ -37,14 +56,12 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
           localVideoRef.current.srcObject = mediaStream;
         }
         setMediaError(null);
-        console.log("[VideoDebateRoom] Camera/mic access granted.");
       })
       .catch((err) => {
         setMediaError("Could not access webcam/mic: " + err.message);
-        alert("Could not access webcam/mic: " + err.message);
         console.error("[VideoDebateRoom] getUserMedia error:", err);
       });
-  }, []);
+  }, [selectedDeviceId]);
 
   // Join debate room and handle signaling
   useEffect(() => {
@@ -148,8 +165,28 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
           {mediaError}
         </div>
       )}
-      {/* Remote (opponent) video - large */}
+      
+      {/* Camera Selection */}
+      {videoDevices.length > 1 && (
+        <div className="mb-4 w-full max-w-md">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Camera:</label>
+          <select
+            value={selectedDeviceId}
+            onChange={(e) => setSelectedDeviceId(e.target.value)}
+            className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900"
+          >
+            {videoDevices.map((device) => (
+              <option key={device.deviceId} value={device.deviceId}>
+                {device.label || `Camera ${device.deviceId.slice(0, 8)}...`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      
+      {/* Video Container with Overlay Transcripts */}
       <div className="relative w-full h-full flex items-center justify-center">
+        {/* Remote (opponent) video - large */}
         <video
           ref={remoteVideoRef}
           autoPlay
@@ -157,6 +194,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
           className="rounded border bg-black w-full h-full object-cover"
           style={{ minHeight: '350px', minWidth: '350px', maxHeight: '100%', maxWidth: '100%' }}
         />
+        
         {/* Local (own) video - small overlay */}
         <video
           ref={localVideoRef}
@@ -166,23 +204,34 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
           className="absolute bottom-4 right-4 rounded border bg-black shadow-lg w-32 h-24 object-cover z-10"
           style={{ border: '2px solid white' }}
         />
-      </div>
-      {/* Info below videos */}
-      <div className="flex flex-row gap-8 mt-4 w-full justify-center">
-        <div className="flex flex-col items-center">
-          <div className="font-semibold">You ({role})</div>
-          <div className="text-xs text-gray-500">UserID: {userId}</div>
-          <div className="mt-2 w-64 min-h-12 bg-gray-100 rounded p-2 text-xs text-gray-800">
-            <span className="font-bold">Live Transcript:</span>
-            <div>{transcript || <span className="text-gray-400">Speak to see transcript...</span>}</div>
+        
+        {/* Transcript Overlays */}
+        <div className="absolute top-4 left-4 right-4 z-20">
+          {/* Your Transcript */}
+          <div className="bg-black/70 backdrop-blur-sm rounded-lg p-3 mb-2">
+            <div className="text-xs text-gray-300 mb-1">You ({role}):</div>
+            <div className="text-sm text-white">
+              {transcript || <span className="text-gray-400">Speak to see transcript...</span>}
+            </div>
+          </div>
+          
+          {/* Opponent Transcript */}
+          <div className="bg-black/70 backdrop-blur-sm rounded-lg p-3">
+            <div className="text-xs text-gray-300 mb-1">Opponent:</div>
+            <div className="text-sm text-white">
+              {role === "pro" ? conTranscript : proTranscript || <span className="text-gray-400">Waiting for transcript...</span>}
+            </div>
           </div>
         </div>
-        <div className="flex flex-col items-center">
-          <div className="font-semibold">{connected ? "Opponent" : "Waiting for opponent..."}</div>
-          <div className="text-xs text-gray-500">(Peer connection: {connected ? "connected" : "not connected"})</div>
-          <div className="mt-2 w-64 min-h-12 bg-gray-100 rounded p-2 text-xs text-gray-800">
-            <span className="font-bold">Opponent Transcript:</span>
-            <div>{role === "pro" ? conTranscript : proTranscript || <span className="text-gray-400">Waiting for transcript...</span>}</div>
+        
+        {/* Connection Status */}
+        <div className="absolute top-4 right-4 z-20">
+          <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+            connected 
+              ? 'bg-green-500/80 text-white' 
+              : 'bg-yellow-500/80 text-white'
+          }`}>
+            {connected ? 'Connected' : 'Connecting...'}
           </div>
         </div>
       </div>

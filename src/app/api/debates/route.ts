@@ -15,9 +15,20 @@ export async function GET() {
   try {
     const debates = await prisma.debate.findMany({
       include: {
-        proUser: true,
-        conUser: true,
-        judge: true,
+        proUser: {
+          select: {
+            id: true,
+            username: true,
+            clerkId: true
+          }
+        },
+        conUser: {
+          select: {
+            id: true,
+            username: true,
+            clerkId: true
+          }
+        },
         _count: {
           select: { messages: true }
         }
@@ -35,10 +46,15 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  let userId: string | undefined;
+  let topic: string | undefined;
+  
   try {
-    const { topic, duration, isPublic } = await req.json();
+    const body = await req.json();
+    topic = body.topic;
+    const { duration, isPublic } = body;
     const authSession = await auth();
-    const userId = authSession.userId;
+    userId = authSession.userId || undefined;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

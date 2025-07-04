@@ -29,6 +29,8 @@ import {
   Target,
   Lightbulb,
   TrendingUp,
+  Trash2,
+  X,
 } from "lucide-react"
 
 export default function DebatePage() {
@@ -260,6 +262,69 @@ export default function DebatePage() {
     }
   }
 
+  const handleDeleteDebate = async () => {
+    if (!user?.id || !id) return
+    
+    // Only allow creator to delete
+    if (debate.proUser?.clerkId !== user.id) {
+      toast.error("Only the debate creator can delete this debate")
+      return
+    }
+    
+    // Confirmation dialog
+    if (!confirm("Are you sure you want to delete this debate? This action cannot be undone.")) {
+      return
+    }
+    
+    try {
+      const res = await fetch(`/api/debates/${id}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId: user.id,
+        }),
+      })
+      
+      if (res.ok) {
+        toast.success("Debate deleted successfully")
+        router.push("/debates")
+      } else {
+        const errorData = await res.json()
+        toast.error(errorData.error || "Failed to delete debate")
+      }
+    } catch (error) {
+      toast.error("An error occurred while deleting the debate")
+    }
+  }
+
+  const handleRemoveParticipant = async (participantType: "con") => {
+    if (!user?.id || !id) return;
+    if (debate.proUser?.clerkId !== user.id) {
+      toast.error("Only the debate creator can remove participants");
+      return;
+    }
+    if (!confirm("Are you sure you want to remove the Con participant?")) return;
+    try {
+      const res = await fetch(`/api/debates/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, action: "remove_con" })
+      });
+      if (res.ok) {
+        const updatedDebate = await res.json();
+        setDebate(updatedDebate);
+        toast.success("Con participant removed");
+      } else {
+        const errorData = await res.json();
+        toast.error(errorData.error || "Failed to remove participant");
+      }
+    } catch (error) {
+      toast.error("An error occurred while removing the participant");
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen relative overflow-hidden">
@@ -319,10 +384,22 @@ export default function DebatePage() {
               <span className="text-gray-400 text-sm">ID: {id}</span>
             </div>
           </div>
-          <NeonButton variant="outline" onClick={() => router.push("/debates")}>
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Arena
-          </NeonButton>
+          <div className="flex gap-3">
+            <NeonButton variant="outline" onClick={() => router.push("/debates")}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back to Arena
+            </NeonButton>
+            {debate.proUser?.clerkId === user?.id && (
+              <NeonButton 
+                variant="outline" 
+                onClick={handleDeleteDebate}
+                className="bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Debate
+              </NeonButton>
+            )}
+          </div>
         </motion.div>
 
         {/* Debug Info for Development */}
@@ -372,7 +449,7 @@ export default function DebatePage() {
           </GlowCard>
 
           {/* Con Participant */}
-          <GlowCard glowColor="rgba(239, 68, 68, 0.3)">
+          <GlowCard glowColor="rgba(239, 68, 68, 0.3)" className="relative group">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-red-400">Con Position</h3>
               <Zap className="w-6 h-6 text-red-400" />
@@ -382,12 +459,22 @@ export default function DebatePage() {
                 <div className="w-12 h-12 rounded-full bg-gradient-to-r from-red-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg">
                   {debate.conUser.username.charAt(0).toUpperCase()}
                 </div>
-                <div>
+                <div className="flex-1">
                   <div className="text-white font-semibold">{debate.conUser.username}</div>
                   {debate.conUser.clerkId === user?.id && (
                     <Badge className="bg-red-500/20 text-red-300 border-red-500/30">You</Badge>
                   )}
                 </div>
+                {/* Remove button - only show for debate creator */}
+                {debate.proUser?.clerkId === user?.id && (
+                  <button
+                    onClick={() => handleRemoveParticipant("con")}
+                    className="p-1 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 hover:bg-red-500/30 transition-all opacity-0 group-hover:opacity-100"
+                    title="Remove Con participant"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             ) : (
               <div className="text-gray-400 italic">Waiting for Con participant...</div>

@@ -37,8 +37,14 @@ export async function POST(
   request: Request,
   { params }: { params: { id: string } }
 ) {
+  let userId: string | undefined;
+  let action: string | undefined;
+  
   try {
-    const { userId, action, joinCode } = await request.json();
+    const body = await request.json();
+    userId = body.userId;
+    action = body.action;
+    const { joinCode } = body;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -163,7 +169,7 @@ export async function POST(
             const proMatch = analysis.match(/pro.*?(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/i);
             const conMatch = analysis.match(/con.*?(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/i);
             // Fallback: try to extract all numbers in order
-            const allScores = Array.from(analysis.matchAll(/(\d{1,2})/g)).map(m => parseInt(m[1]));
+            const allScores = Array.from(analysis.matchAll(/(\d{1,2})/g)).map((m: any) => parseInt(m[1]));
             if (proMatch && proMatch.length >= 5) {
               aiScores.pro = {
                 logic: Number(proMatch[1]),
@@ -235,11 +241,158 @@ export async function POST(
   }
 }
 
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { userId } = await request.json();
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({ 
+      where: { clerkId: userId } 
+    });
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const debate = await prisma.debate.findUnique({
+      where: { id: params.id },
+      include: {
+        proUser: true,
+        conUser: true,
+        creator: true
+      }
+    });
+
+    if (!debate) {
+      return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+    }
+
+    // Only allow the debate creator (pro user) to delete
+    if (debate.proUserId !== user.id) {
+      return NextResponse.json({ error: "Only the debate creator can delete this debate" }, { status: 403 });
+    }
+
+    // Delete related data first (cascade delete)
+    await prisma.$transaction([
+      // Delete messages
+      prisma.message.deleteMany({
+        where: { debateId: params.id }
+      }),
+      // Delete scores
+      prisma.score.deleteMany({
+        where: { debateId: params.id }
+      }),
+      // Delete votes
+      prisma.vote.deleteMany({
+        where: { debateId: params.id }
+      }),
+      // Delete the debate
+      prisma.debate.delete({
+        where: { id: params.id }
+      })
+    ]);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting debate:", { error, debateId: params.id });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  let userId: string | undefined;
+  let action: string | undefined;
+  
+  try {
+    const body = await request.json();
+    userId = body.userId;
+    action = body.action;
+
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const user = await prisma.user.findUnique({ 
+      where: { clerkId: userId } 
+    });
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const debate = await prisma.debate.findUnique({
+      where: { id: params.id },
+      include: {
+        proUser: true,
+        conUser: true,
+        creator: true
+      }
+    });
+
+    if (!debate) {
+      return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+    }
+
+    // Only allow debate creator to remove participants
+    if (debate.proUserId !== user.id) {
+      return NextResponse.json({ error: "Only the debate creator can remove participants" }, { status: 403 });
+    }
+
+    let updatedDebate;
+
+    if (action === "remove_pro") {
+      if (!debate.proUser) {
+        return NextResponse.json({ error: "No Pro participant to remove" }, { status: 400 });
+      }
+      
+      // Cannot remove pro user as they are the creator and required
+      return NextResponse.json({ error: "Cannot remove the Pro participant as they are the debate creator" }, { status: 400 });
+    } else if (action === "remove_con") {
+      if (!debate.conUser) {
+        return NextResponse.json({ error: "No Con participant to remove" }, { status: 400 });
+      }
+      
+      updatedDebate = await prisma.debate.update({
+        where: { id: params.id },
+        data: { 
+          conUserId: null,
+          status: "waiting"
+        },
+        include: {
+          proUser: true,
+          conUser: true,
+          creator: true
+        }
+      });
+    } else {
+      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+    }
+
+    return NextResponse.json(updatedDebate);
+  } catch (error) {
+    console.error("Error updating debate:", { error, userId, debateId: params.id, action });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function OPTIONS() {
   return new NextResponse(null, {
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     }
   });
