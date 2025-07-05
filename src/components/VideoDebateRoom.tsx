@@ -232,7 +232,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
               : 'bg-yellow-500/80 text-white'
           }`}>
             {connected ? 'Connected' : 'Connecting...'}
-          </div>
+      </div>
         </div>
       </div>
     </div>

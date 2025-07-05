@@ -1803,6 +1803,9 @@
     -webkit-user-select: none;
     user-select: none;
   }
+  .running {
+    animation-play-state: running;
+  }
   .group-hover\:text-indigo-300 {
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
