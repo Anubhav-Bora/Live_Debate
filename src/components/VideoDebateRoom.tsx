@@ -69,41 +69,106 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     console.log(`[VideoDebateRoom] Joining debate room: debate_${debateId} as ${role} (${userId})`);
     socket.emit("join_debate", { debateId, userId, role });
 
-    // Only one peer should initiate (e.g., pro)
-    const initiator = role === "pro";
-    const p = new SimplePeer({ initiator, trickle: false, stream });
-    setPeer(p);
+    // Wait a bit for the other participant to potentially join
+    const timeout = setTimeout(() => {
+      // Only one peer should initiate (e.g., pro)
+      const initiator = role === "pro";
+      console.log(`[VideoDebateRoom] Creating peer as ${initiator ? 'initiator' : 'receiver'}`);
+      
+      // ICE servers for WebRTC (STUN/TURN)
+      const iceServers = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        // Add TURN server for better connectivity across networks
+        {
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        },
+        {
+          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        }
+      ];
+      
+      const p = new SimplePeer({ 
+        initiator, 
+        trickle: false, 
+        stream,
+        config: { iceServers }
+      });
+      setPeer(p);
 
-    p.on("signal", (data: any) => {
-      console.log("[VideoDebateRoom] Sending signal:", data);
-      socket.emit("signal", { debateId, userId, signal: data });
-    });
+      p.on("signal", (data: any) => {
+        console.log("[VideoDebateRoom] Sending signal:", data);
+        socket.emit("signal", { debateId, userId, signal: data });
+      });
 
-    p.on("stream", (remoteStream: MediaStream) => {
-      setRemoteStream(remoteStream);
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = remoteStream;
-      }
-      setConnected(true);
-      console.log("[VideoDebateRoom] Received remote stream.");
-    });
+      p.on("stream", (remoteStream: MediaStream) => {
+        console.log("[VideoDebateRoom] Received remote stream with tracks:", remoteStream.getTracks().map(t => t.kind));
+        setRemoteStream(remoteStream);
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+          remoteVideoRef.current.play().catch((e) => {
+            console.warn("[VideoDebateRoom] Remote video play error:", e);
+          });
+        }
+        setConnected(true);
+        setMediaError(null);
+        console.log("[VideoDebateRoom] Received remote stream.");
+      });
 
-    p.on("error", (err: Error) => {
-      console.error("[VideoDebateRoom] Peer connection error:", err);
-    });
+      p.on("error", (err: Error) => {
+        console.error("[VideoDebateRoom] Peer connection error:", err);
+        setMediaError("Connection error: " + err.message);
+        setConnected(false);
+      });
 
-    // Listen for signaling data from the other peer
-    const onSignal = ({ userId: fromId, signal }: any) => {
-      if (fromId !== userId) {
-        console.log("[VideoDebateRoom] Received signal from other peer:", signal);
-        p.signal(signal);
-      }
-    };
-    socket.on("signal", onSignal);
+      p.on("connect", () => {
+        console.log("[VideoDebateRoom] Peer connected successfully");
+        setConnected(true);
+        setMediaError(null);
+      });
+
+      p.on("close", () => {
+        console.log("[VideoDebateRoom] Peer connection closed");
+        setConnected(false);
+      });
+
+      p.on("iceStateChange", (state: string) => {
+        console.log("[VideoDebateRoom] ICE connection state:", state);
+      });
+
+      // Listen for signaling data from the other peer
+      const onSignal = ({ userId: fromId, signal }: any) => {
+        if (fromId !== userId) {
+          console.log("[VideoDebateRoom] Received signal from other peer:", signal);
+          try {
+            p.signal(signal);
+          } catch (err) {
+            console.error("[VideoDebateRoom] Error signaling peer:", err);
+          }
+        }
+      };
+      socket.on("signal", onSignal);
+
+      return () => {
+        socket.off("signal", onSignal);
+        if (p) {
+          console.log("[VideoDebateRoom] Destroying peer connection");
+          p.destroy();
+        }
+      };
+    }, 2000); // Wait 2 seconds for other participant to join
 
     return () => {
-      socket.off("signal", onSignal);
-      p.destroy();
+      clearTimeout(timeout);
     };
   }, [socket, stream, debateId, userId, role]);
 
@@ -187,13 +252,31 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
       {/* Video Container with Overlay Transcripts */}
       <div className="relative w-full h-full flex items-center justify-center">
         {/* Remote (opponent) video - large */}
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          className="rounded border bg-black w-full h-full object-cover"
-          style={{ minHeight: '350px', minWidth: '350px', maxHeight: '100%', maxWidth: '100%' }}
-        />
+        {remoteStream ? (
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            className="rounded border bg-black w-full h-full object-cover"
+            style={{ minHeight: '350px', minWidth: '350px', maxHeight: '100%', maxWidth: '100%' }}
+          />
+        ) : (
+          <div className="rounded border bg-gray-900 w-full h-full flex items-center justify-center text-white">
+            <div className="text-center">
+              <div className="text-2xl mb-2">👤</div>
+              <div className="text-lg font-medium">Waiting for opponent...</div>
+              <div className="text-sm text-gray-400 mt-2">
+                {connected ? 'Connected - video loading...' : 'Establishing connection...'}
+              </div>
+              <div className="text-xs text-gray-500 mt-4 max-w-xs">
+                {role === 'pro' 
+                  ? 'Share the join code with your opponent to start the video debate'
+                  : 'Waiting for Pro participant to join...'
+                }
+              </div>
+            </div>
+          </div>
+        )}
         
         {/* Local (own) video - small overlay */}
         <video
@@ -232,9 +315,20 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
               : 'bg-yellow-500/80 text-white'
           }`}>
             {connected ? 'Connected' : 'Connecting...'}
-      </div>
+          </div>
         </div>
+
+        {/* Debug Info (only show in development) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="absolute bottom-20 left-4 z-20 bg-black/80 text-white text-xs p-2 rounded">
+            <div>Role: {role}</div>
+            <div>Connected: {connected ? 'Yes' : 'No'}</div>
+            <div>Local Stream: {stream ? 'Yes' : 'No'}</div>
+            <div>Remote Stream: {remoteStream ? 'Yes' : 'No'}</div>
+            <div>Peer: {peer ? 'Active' : 'None'}</div>
+          </div>
+        )}
       </div>
     </div>
   );
-} 
+}

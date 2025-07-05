@@ -140,6 +140,13 @@ app.prepare().then(() => {
       io.to(`debate_${debateId}`).emit('transcript_update', { role, transcript });
     });
 
+    // WebRTC signaling handler
+    socket.on('signal', ({ debateId, userId, signal }) => {
+      console.log(`📡 Signal from ${userId} in debate ${debateId}`);
+      // Forward the signal to other participants in the same debate
+      socket.to(`debate_${debateId}`).emit('signal', { userId, signal });
+    });
+
     socket.on('disconnect', () => {
       console.log(`❌ Client disconnected: ${socket.id}`);
     });
