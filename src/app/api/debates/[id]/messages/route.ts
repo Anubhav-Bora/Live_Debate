@@ -71,9 +71,10 @@ export async function POST(
 }
 
 export async function OPTIONS() {
+  const corsOrigin = process.env.CORS_ORIGIN || '*';
   return new NextResponse(null, {
     headers: {
-      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Origin': corsOrigin,
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     }

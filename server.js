@@ -26,10 +26,12 @@ app.prepare().then(() => {
   });
 
   // Initialize Socket.IO
+  const corsOrigin = process.env.CORS_ORIGIN || (dev ? '*' : undefined);
+
   const io = new SocketIOServer(server, {
     path: '/api/socket.io',
     cors: {
-      origin: "*",
+      origin: corsOrigin,
       methods: ["GET", "POST"],
     },
   });
