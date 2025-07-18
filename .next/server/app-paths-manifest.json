@@ -1,0 +1,11 @@
+{
+  "/api/sync-user/route": "app/api/sync-user/route.js",
+  "/api/debates/route": "app/api/debates/route.js",
+  "/api/debates/[id]/messages/route": "app/api/debates/[id]/messages/route.js",
+  "/api/debates/[id]/route": "app/api/debates/[id]/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/debates/create/page": "app/debates/create/page.js",
+  "/debates/page": "app/debates/page.js",
+  "/page": "app/page.js",
+  "/debates/[id]/page": "app/debates/[id]/page.js"
+}

@@ -6,7 +6,7 @@ const { PrismaClient } = require('@prisma/client');
 const fetch = (...args) => import('node-fetch').then(mod => mod.default(...args));
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
+const hostname = process.env.HOSTNAME || '0.0.0.0';
 const port = process.env.PORT || 3000;
 
 const app = next({ dev, hostname, port });
@@ -152,7 +152,7 @@ app.prepare().then(() => {
     });
   });
 
-  server.listen(port, (err) => {
+  server.listen(port, hostname, (err) => {
     if (err) throw err;
     console.log(`🚀 Server ready on http://${hostname}:${port}`);
     console.log(`🔌 Socket.IO server ready on path: /api/socket/io`);
