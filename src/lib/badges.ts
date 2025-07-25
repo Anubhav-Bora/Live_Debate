@@ -1,4 +1,18 @@
-export const BADGES = [
+interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  criteria: {
+    debateCount?: number;
+    avgPersuasiveness?: number;
+    avgLogic?: number;
+    avgClarity?: number;
+    votesWon?: number;
+  };
+}
+
+export const BADGES: Badge[] = [
   {
     id: "beginner",
     name: "Beginner",
@@ -50,10 +64,28 @@ export const BADGES = [
   },
 ];
 
-interface UserBadge { badgeId: string; }
-interface Debate { id: string; }
-interface Score { logic: number; clarity: number; persuasiveness: number; }
-interface Vote { winner: string; debate: { proUserId: string; conUserId: string; }; }
+interface UserBadge { 
+  badgeId: string; 
+}
+
+interface Debate { 
+  id: string; 
+}
+
+interface Score { 
+  logic: number; 
+  clarity: number; 
+  persuasiveness: number; 
+}
+
+interface Vote { 
+  winner: string; 
+  debate: { 
+    proUserId: string; 
+    conUserId: string; 
+  }; 
+}
+
 interface User {
   UserBadge: UserBadge[];
   debatesCreated: Debate[];
@@ -63,7 +95,23 @@ interface User {
   Vote: Vote[];
 }
 
-export async function checkBadges(userId: string, prisma: any) {
+interface PrismaClient {
+  user: {
+    findUnique: (params: {
+      where: { id: string };
+      include: {
+        scores: boolean;
+        debatesCreated: boolean;
+        debatesPro: boolean;
+        debatesCon: boolean;
+        Vote: boolean;
+        UserBadge: boolean;
+      };
+    }) => Promise<User | null>;
+  };
+}
+
+export async function checkBadges(userId: string, prisma: PrismaClient): Promise<Badge[]> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
@@ -74,12 +122,12 @@ export async function checkBadges(userId: string, prisma: any) {
       Vote: true,
       UserBadge: true,
     },
-  }) as User;
+  });
 
   if (!user) return [];
 
-  const earnedBadges = [];
-  const currentBadgeIds = user.UserBadge.map((ub: UserBadge) => ub.badgeId);
+  const earnedBadges: Badge[] = [];
+  const currentBadgeIds = user.UserBadge.map((ub) => ub.badgeId);
 
   // Calculate stats
   const debateCount = [
@@ -87,11 +135,11 @@ export async function checkBadges(userId: string, prisma: any) {
     ...user.debatesPro,
     ...user.debatesCon,
   ].filter(
-    (v: Debate, i: number, a: Debate[]) => a.findIndex((t: Debate) => t.id === v.id) === i
+    (v, i, a) => a.findIndex((t) => t.id === v.id) === i
   ).length;
 
   const totalScores = user.scores.reduce(
-    (acc: { logic: number; clarity: number; persuasiveness: number }, score: { logic: number; clarity: number; persuasiveness: number }) => {
+    (acc, score) => {
       acc.logic += score.logic;
       acc.clarity += score.clarity;
       acc.persuasiveness += score.persuasiveness;
@@ -103,7 +151,7 @@ export async function checkBadges(userId: string, prisma: any) {
   const avgLogic = user.scores.length > 0 ? totalScores.logic / user.scores.length : 0;
   const avgClarity = user.scores.length > 0 ? totalScores.clarity / user.scores.length : 0;
   const avgPersuasiveness = user.scores.length > 0 ? totalScores.persuasiveness / user.scores.length : 0;
-  const votesWon = user.Vote.filter((vote: Vote) => 
+  const votesWon = user.Vote.filter((vote) => 
     vote.winner === "pro" && vote.debate.proUserId === userId ||
     vote.winner === "con" && vote.debate.conUserId === userId
   ).length;
@@ -114,15 +162,15 @@ export async function checkBadges(userId: string, prisma: any) {
 
     let earned = false;
     
-    if (badge.criteria.debateCount && debateCount >= badge.criteria.debateCount) {
+    if (badge.criteria.debateCount !== undefined && debateCount >= badge.criteria.debateCount) {
       earned = true;
-    } else if (badge.criteria.avgLogic && avgLogic >= badge.criteria.avgLogic) {
+    } else if (badge.criteria.avgLogic !== undefined && avgLogic >= badge.criteria.avgLogic) {
       earned = true;
-    } else if (badge.criteria.avgClarity && avgClarity >= badge.criteria.avgClarity) {
+    } else if (badge.criteria.avgClarity !== undefined && avgClarity >= badge.criteria.avgClarity) {
       earned = true;
-    } else if (badge.criteria.avgPersuasiveness && avgPersuasiveness >= badge.criteria.avgPersuasiveness) {
+    } else if (badge.criteria.avgPersuasiveness !== undefined && avgPersuasiveness >= badge.criteria.avgPersuasiveness) {
       earned = true;
-    } else if (badge.criteria.votesWon && votesWon >= badge.criteria.votesWon) {
+    } else if (badge.criteria.votesWon !== undefined && votesWon >= badge.criteria.votesWon) {
       earned = true;
     }
 

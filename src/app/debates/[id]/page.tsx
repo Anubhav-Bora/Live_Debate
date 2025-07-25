@@ -315,7 +315,7 @@ export default function DebatePage() {
     }
   }
 
-  const handleRemoveParticipant = async (_participantType: "con") => {
+  const handleRemoveParticipant = async () => {
     if (!user?.id || !id) return;
     if (debate?.proUser?.id !== user.id) {
       toast.error("Only the debate creator can remove participants");
@@ -483,7 +483,7 @@ export default function DebatePage() {
                 </div>
                 {debate.proUser?.id === user?.id && (
                   <button
-                    onClick={() => handleRemoveParticipant("con")}
+                    onClick={handleRemoveParticipant}
                     className="p-1 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 hover:bg-red-500/30 transition-all opacity-0 group-hover:opacity-100"
                     title="Remove Con participant"
                   >

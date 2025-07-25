@@ -34,7 +34,7 @@ export default function CreateDebatePage() {
     try {
       await navigator.clipboard.writeText(text)
       toast.success(`${description} copied to clipboard`)
-    } catch (err) {
+    } catch (_) {
       toast.error("Failed to copy to clipboard")
     }
   }
