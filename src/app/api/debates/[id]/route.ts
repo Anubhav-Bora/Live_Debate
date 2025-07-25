@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 interface ScoreData {
   logic: number;
@@ -15,10 +15,12 @@ interface AIScores {
   con?: ScoreData;
 }
 
-export async function GET(_: Request, { params }: Params) {
+export async function GET(_: Request, context: Params) {
   try {
+    const { id } = await context.params;
+    
     const debate = await prisma.debate.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         proUser: true,
         conUser: true,
@@ -44,8 +46,9 @@ export async function GET(_: Request, { params }: Params) {
   }
 }
 
-export async function POST(request: Request, { params }: Params) {
+export async function POST(request: Request, context: Params) {
   try {
+    const { id } = await context.params;
     const { userId, action, joinCode } = await request.json();
 
     if (!userId) {
@@ -57,7 +60,7 @@ export async function POST(request: Request, { params }: Params) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const debate = await prisma.debate.findUnique({ where: { id: params.id } });
+    const debate = await prisma.debate.findUnique({ where: { id } });
     if (!debate) {
       return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     }
@@ -89,7 +92,7 @@ export async function POST(request: Request, { params }: Params) {
       }
 
       const updatedDebate = await prisma.debate.update({
-        where: { id: params.id },
+        where: { id },
         data: {
           conUserId: user.id,
           status: debate.proUserId ? "in-progress" : "waiting",
@@ -117,7 +120,7 @@ export async function POST(request: Request, { params }: Params) {
       }
 
       const updatedDebate = await prisma.debate.update({
-        where: { id: params.id },
+        where: { id },
         data: { status: "completed" },
         include: {
           proUser: true,
@@ -241,8 +244,9 @@ export async function POST(request: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(request: Request, { params }: Params) {
+export async function DELETE(request: Request, context: Params) {
   try {
+    const { id } = await context.params;
     const { userId } = await request.json();
 
     if (!userId) {
@@ -255,7 +259,7 @@ export async function DELETE(request: Request, { params }: Params) {
     }
 
     const debate = await prisma.debate.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: { proUser: true, conUser: true, creator: true },
     });
 
@@ -267,10 +271,10 @@ export async function DELETE(request: Request, { params }: Params) {
     }
 
     await prisma.$transaction([
-      prisma.message.deleteMany({ where: { debateId: params.id } }),
-      prisma.score.deleteMany({ where: { debateId: params.id } }),
-      prisma.vote.deleteMany({ where: { debateId: params.id } }),
-      prisma.debate.delete({ where: { id: params.id } }),
+      prisma.message.deleteMany({ where: { debateId: id } }),
+      prisma.score.deleteMany({ where: { debateId: id } }),
+      prisma.vote.deleteMany({ where: { debateId: id } }),
+      prisma.debate.delete({ where: { id } }),
     ]);
 
     return NextResponse.json({ success: true });
@@ -283,8 +287,9 @@ export async function DELETE(request: Request, { params }: Params) {
   }
 }
 
-export async function PATCH(request: Request, { params }: Params) {
+export async function PATCH(request: Request, context: Params) {
   try {
+    const { id } = await context.params;
     const { userId, action } = await request.json();
 
     if (!userId) {
@@ -297,7 +302,7 @@ export async function PATCH(request: Request, { params }: Params) {
     }
 
     const debate = await prisma.debate.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: { proUser: true, conUser: true, creator: true },
     });
 
@@ -307,7 +312,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
     if (action === "remove_con" && debate.conUser) {
       const updatedDebate = await prisma.debate.update({
-        where: { id: params.id },
+        where: { id },
         data: { conUserId: null, status: "waiting" },
         include: { proUser: true, conUser: true, creator: true },
       });
@@ -326,6 +331,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
 export async function OPTIONS() {
   return new NextResponse(null, {
+    status: 200,
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
