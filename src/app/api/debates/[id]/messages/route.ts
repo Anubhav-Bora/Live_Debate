@@ -10,14 +10,20 @@ interface MessagePostData {
   role: 'PRO' | 'CON' | 'MODERATOR' | 'SYSTEM';
 }
 
+interface RouteParams {
+  params: Promise<{ id: string }>;
+}
+
 // GET handler - Fetch all messages for a debate
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteParams
 ) {
   try {
+    const { id } = await context.params;
+    
     const messages = await prisma.message.findMany({
-      where: { debateId: params.id },
+      where: { debateId: id },
       include: {
         sender: {
           select: {
@@ -39,7 +45,10 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching messages:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch messages', details: error instanceof Error ? error.message : String(error) },
+      { 
+        error: 'Failed to fetch messages', 
+        details: error instanceof Error ? error.message : String(error) 
+      },
       {
         status: 500,
         headers: {
@@ -54,11 +63,13 @@ export async function GET(
 // POST handler - Create a new message
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: RouteParams
 ) {
   try {
-    const { userId, content, role } = await request.json() as MessagePostData;
-    
+    const { id } = await context.params;
+    const body = await request.json();
+    const { userId, content, role } = body as MessagePostData;
+        
     if (!userId || !content || !role) {
       return NextResponse.json(
         { error: 'Missing required fields' },
@@ -98,7 +109,7 @@ export async function POST(
       data: {
         content,
         role,
-        debateId: params.id,
+        debateId: id,
         senderId: user.id,
       },
       include: {
@@ -121,7 +132,10 @@ export async function POST(
   } catch (error) {
     console.error('Error creating message:', error);
     return NextResponse.json(
-      { error: 'Failed to create message', details: error instanceof Error ? error.message : String(error) },
+      { 
+        error: 'Failed to create message', 
+        details: error instanceof Error ? error.message : String(error) 
+      },
       {
         status: 500,
         headers: {
@@ -136,6 +150,7 @@ export async function POST(
 // OPTIONS handler - CORS preflight
 export async function OPTIONS() {
   return new NextResponse(null, {
+    status: 200,
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
