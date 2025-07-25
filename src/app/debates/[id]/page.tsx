@@ -38,17 +38,17 @@ export default function DebatePage() {
   const id = params?.id as string
   const { user } = useUser()
   const router = useRouter()
-  const [debate, setDebate] = useState<any>(null)
+  const [debate, setDebate] = useState<unknown>(null)
   const [role, setRole] = useState<"pro" | "con" | "viewer">("viewer")
   const [joinCode, setJoinCode] = useState("")
   const [loading, setLoading] = useState(true)
   const { socket, isConnected } = useSocket()
   const [debateStatus, setDebateStatus] = useState<string>(debate?.status || "waiting")
   const [timer, setTimer] = useState<number | null>(null)
-  const [messages, setMessages] = useState<any[]>([])
+  const [messages, setMessages] = useState<unknown[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [isSending, setIsSending] = useState(false)
-  const [aiFeedback, setAiFeedback] = useState<any>(null)
+  const [aiFeedback, setAiFeedback] = useState<unknown>(null)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const timerInterval = useRef<NodeJS.Timeout | null>(null)
 
@@ -225,11 +225,6 @@ export default function DebatePage() {
     }
   }
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text)
-    toast.success(`${label} copied to clipboard!`)
-  }
-
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -348,7 +343,7 @@ export default function DebatePage() {
         <div className="relative z-10 container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
           <GlowCard className="text-center">
             <div className="text-red-400 text-xl font-bold mb-4">Debate Not Found</div>
-            <p className="text-gray-300 mb-6">The debate you're looking for doesn't exist or failed to load.</p>
+            <p className="text-gray-300 mb-6">The debate you&apos;re looking for doesn&apos;t exist or failed to load.</p>
             <Link href="/debates">
               <NeonButton>
                 <ArrowLeft className="w-4 h-4 mr-2" />

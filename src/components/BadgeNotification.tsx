@@ -1,11 +1,17 @@
 "use client";
 import { useEffect } from "react";
 
+interface Badge {
+  icon?: string;
+  name: string;
+  description: string;
+}
+
 export default function BadgeNotification({
   badge,
   onClose,
 }: {
-  badge: any;
+  badge: Badge;
   onClose: () => void;
 }) {
   useEffect(() => {

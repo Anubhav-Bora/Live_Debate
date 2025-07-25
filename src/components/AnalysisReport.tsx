@@ -5,7 +5,7 @@ export default function AnalysisReport({
   debate,
   onBack,
 }: {
-  debate: any;
+  debate: unknown;
   onBack: () => void;
 }) {
   const [loading, setLoading] = useState(false);
@@ -14,7 +14,7 @@ export default function AnalysisReport({
   const generateAnalysis = async () => {
     setLoading(true);
     try {
-      const transcript = debate.messages
+      const transcript = (debate as any).messages
         .map((msg: any) => `${msg.sender.username} (${msg.role}): ${msg.content}`)
         .join("\n");
 
@@ -25,7 +25,7 @@ export default function AnalysisReport({
         },
         body: JSON.stringify({
           transcript,
-          debateTopic: debate.topic,
+          debateTopic: (debate as any).topic,
         }),
       });
 
@@ -50,7 +50,7 @@ export default function AnalysisReport({
       </button>
       
       <h2 className="text-2xl font-bold mb-4">AI Debate Analysis</h2>
-      <h3 className="text-xl font-semibold mb-2">{debate.topic}</h3>
+      <h3 className="text-xl font-semibold mb-2">{(debate as any).topic}</h3>
       
       {!analysis ? (
         <div className="text-center py-8">

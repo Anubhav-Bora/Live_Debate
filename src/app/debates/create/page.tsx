@@ -24,7 +24,7 @@ export default function CreateDebatePage() {
   const [duration, setDuration] = useState(180)
   const [isPublic, setIsPublic] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [createdDebate, setCreatedDebate] = useState<any>(null)
+  const [createdDebate, setCreatedDebate] = useState<unknown>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -95,11 +95,6 @@ export default function CreateDebatePage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text)
-    toast.success(`${label} copied to clipboard!`)
   }
 
   if (!user) {

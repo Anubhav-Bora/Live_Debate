@@ -48,7 +48,7 @@ export default function DebateRoom({
   const [debateStatus, setDebateStatus] = useState<string>("waiting");
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  const [aiFeedback, setAiFeedback] = useState<any>(null);
+  const [aiFeedback, setAiFeedback] = useState<unknown>(null);
   const timerInterval = useRef<NodeJS.Timeout | null>(null);
   const { socket, isConnected } = useSocket();
   const [fetchedDuration, setFetchedDuration] = useState<number>(180);

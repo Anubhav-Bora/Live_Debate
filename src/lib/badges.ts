@@ -50,6 +50,19 @@ export const BADGES = [
   },
 ];
 
+interface UserBadge { badgeId: string; }
+interface Debate { id: string; }
+interface Score { logic: number; clarity: number; persuasiveness: number; }
+interface Vote { winner: string; debate: { proUserId: string; conUserId: string; }; }
+interface User {
+  UserBadge: UserBadge[];
+  debatesCreated: Debate[];
+  debatesPro: Debate[];
+  debatesCon: Debate[];
+  scores: Score[];
+  Vote: Vote[];
+}
+
 export async function checkBadges(userId: string, prisma: any) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -61,12 +74,12 @@ export async function checkBadges(userId: string, prisma: any) {
       Vote: true,
       UserBadge: true,
     },
-  });
+  }) as User;
 
   if (!user) return [];
 
   const earnedBadges = [];
-  const currentBadgeIds = user.UserBadge.map((ub: any) => ub.badgeId);
+  const currentBadgeIds = user.UserBadge.map((ub: UserBadge) => ub.badgeId);
 
   // Calculate stats
   const debateCount = [
@@ -74,11 +87,11 @@ export async function checkBadges(userId: string, prisma: any) {
     ...user.debatesPro,
     ...user.debatesCon,
   ].filter(
-    (v: any, i: any, a: any) => a.findIndex((t: any) => t.id === v.id) === i
+    (v: Debate, i: number, a: Debate[]) => a.findIndex((t: Debate) => t.id === v.id) === i
   ).length;
 
   const totalScores = user.scores.reduce(
-    (acc: any, score: any) => {
+    (acc: Score, score: Score) => {
       acc.logic += score.logic;
       acc.clarity += score.clarity;
       acc.persuasiveness += score.persuasiveness;
@@ -90,7 +103,7 @@ export async function checkBadges(userId: string, prisma: any) {
   const avgLogic = user.scores.length > 0 ? totalScores.logic / user.scores.length : 0;
   const avgClarity = user.scores.length > 0 ? totalScores.clarity / user.scores.length : 0;
   const avgPersuasiveness = user.scores.length > 0 ? totalScores.persuasiveness / user.scores.length : 0;
-  const votesWon = user.Vote.filter((vote: any) => 
+  const votesWon = user.Vote.filter((vote: Vote) => 
     vote.winner === "pro" && vote.debate.proUserId === userId ||
     vote.winner === "con" && vote.debate.conUserId === userId
   ).length;

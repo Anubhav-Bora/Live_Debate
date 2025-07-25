@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import SimplePeer from "simple-peer";
 import { useSocket } from "@/context/SocketContext";
-import { Button } from "@/components/ui/button";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 
 interface VideoDebateRoomProps {
@@ -14,7 +13,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
   const { socket } = useSocket();
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [peer, setPeer] = useState<any>(null);
+  const [peer, setPeer] = useState<unknown>(null);
   const [connected, setConnected] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -74,7 +73,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     const p = new SimplePeer({ initiator, trickle: false, stream });
     setPeer(p);
 
-    p.on("signal", (data: any) => {
+    p.on("signal", (data: unknown) => {
       console.log("[VideoDebateRoom] Sending signal:", data);
       socket.emit("signal", { debateId, userId, signal: data });
     });
@@ -93,7 +92,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     });
 
     // Listen for signaling data from the other peer
-    const onSignal = ({ userId: fromId, signal }: any) => {
+    const onSignal = ({ userId: fromId, signal }: { userId: string, signal: unknown }) => {
       if (fromId !== userId) {
         console.log("[VideoDebateRoom] Received signal from other peer:", signal);
         p.signal(signal);
