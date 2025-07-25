@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from "react";
-import  io  from "socket.io-client"; // only importing io, ignoring Socket type
+import { io, Socket } from "socket.io-client"; // Import Socket type
+
 
 type SocketContextType = {
   socket: any | null; // 👈 use `any` to bypass type checking
