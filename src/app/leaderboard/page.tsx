@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table"
 import { motion } from "framer-motion"
@@ -19,31 +19,63 @@ interface UserScore {
   badges: number
 }
 
+type TimeRange = "week" | "month" | "all"
+
+interface TimeRangeOption {
+  value: TimeRange
+  label: string
+  icon: React.ReactNode
+}
+
+interface MedalConfig {
+  emoji: string | number
+  color: string
+  glow: string
+  icon: React.ReactNode
+}
+
 export default function LeaderboardPage() {
   const [users, setUsers] = useState<UserScore[]>([])
   const [loading, setLoading] = useState(true)
-  const [timeRange, setTimeRange] = useState<"week" | "month" | "all">("week")
+  const [timeRange, setTimeRange] = useState<TimeRange>("week")
 
   useEffect(() => {
+    let isMounted = true
+    const abortController = new AbortController()
+
     const fetchLeaderboard = async () => {
       try {
         setLoading(true)
-        const res = await fetch(`/api/leaderboard?range=${timeRange}`)
-        if (res.ok) {
-          const data = await res.json()
+        const res = await fetch(`/api/leaderboard?range=${timeRange}`, {
+          signal: abortController.signal
+        })
+
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+        
+        const data = await res.json()
+        if (isMounted) {
           setUsers(data)
         }
       } catch (error) {
-        console.error("Error fetching leaderboard:", error)
+        if (error instanceof Error && error.name !== 'AbortError') {
+          console.error("Error fetching leaderboard:", error)
+        }
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     fetchLeaderboard()
+
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
   }, [timeRange])
 
-  const getMedalConfig = (index: number) => {
+  const getMedalConfig = (index: number): MedalConfig => {
     switch (index) {
       case 0:
         return {
@@ -76,11 +108,14 @@ export default function LeaderboardPage() {
     }
   }
 
-  const timeRangeOptions = [
+  const timeRangeOptions: TimeRangeOption[] = useMemo(() => [
     { value: "week", label: "This Week", icon: <Calendar className="w-4 h-4" /> },
     { value: "month", label: "This Month", icon: <Calendar className="w-4 h-4" /> },
     { value: "all", label: "All Time", icon: <TrendingUp className="w-4 h-4" /> },
-  ]
+  ], [])
+
+  const topThreeUsers = useMemo(() => users.slice(0, 3), [users])
+  const remainingUsers = useMemo(() => users.slice(3), [users])
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -109,7 +144,7 @@ export default function LeaderboardPage() {
                 <NeonButton
                   key={option.value}
                   variant={timeRange === option.value ? "primary" : "outline"}
-                  onClick={() => setTimeRange(option.value as 'week' | 'month' | 'all')}
+                  onClick={() => setTimeRange(option.value)}
                 >
                   {option.icon}
                   <span className="ml-2">{option.label}</span>
@@ -146,7 +181,7 @@ export default function LeaderboardPage() {
             ) : (
               <>
                 {/* Top 3 Podium */}
-                {users.length >= 3 && (
+                {topThreeUsers.length > 0 && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -155,65 +190,71 @@ export default function LeaderboardPage() {
                   >
                     <div className="flex justify-center items-end gap-8 mb-8">
                       {/* Second Place */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 50 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.6 }}
-                        className="text-center"
-                      >
-                        <GlowCard glowColor={getMedalConfig(1).glow} className="p-6">
-                          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-r from-gray-300 to-gray-500 flex items-center justify-center text-white font-bold text-2xl">
-                            {users[1].username.charAt(0).toUpperCase()}
-                          </div>
-                          <h3 className="text-lg font-bold text-white mb-1">{users[1].username}</h3>
-                          <Badge className="bg-gradient-to-r from-gray-300 to-gray-500 text-white mb-2">
-                            {users[1].totalScore.toFixed(1)} pts
-                          </Badge>
-                          <div className="text-4xl mb-2">🥈</div>
-                          <div className="text-sm text-gray-400">{users[1].debateCount} debates</div>
-                        </GlowCard>
-                      </motion.div>
+                      {topThreeUsers[1] && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 50 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.6 }}
+                          className="text-center"
+                        >
+                          <GlowCard glowColor={getMedalConfig(1).glow} className="p-6">
+                            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-r from-gray-300 to-gray-500 flex items-center justify-center text-white font-bold text-2xl">
+                              {topThreeUsers[1].username.charAt(0).toUpperCase()}
+                            </div>
+                            <h3 className="text-lg font-bold text-white mb-1">{topThreeUsers[1].username}</h3>
+                            <Badge className="bg-gradient-to-r from-gray-300 to-gray-500 text-white mb-2">
+                              {topThreeUsers[1].totalScore.toFixed(1)} pts
+                            </Badge>
+                            <div className="text-4xl mb-2">🥈</div>
+                            <div className="text-sm text-gray-400">{topThreeUsers[1].debateCount} debates</div>
+                          </GlowCard>
+                        </motion.div>
+                      )}
 
                       {/* First Place */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 50 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 }}
-                        className="text-center"
-                      >
-                        <GlowCard glowColor={getMedalConfig(0).glow} className="p-8 scale-110">
-                          <Crown className="w-8 h-8 mx-auto mb-2 text-yellow-400" />
-                          <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600 flex items-center justify-center text-white font-bold text-3xl animate-pulse-glow">
-                            {users[0].username.charAt(0).toUpperCase()}
-                          </div>
-                          <h3 className="text-xl font-bold text-white mb-2">{users[0].username}</h3>
-                          <Badge className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-white mb-3 text-lg px-4 py-1">
-                            {users[0].totalScore.toFixed(1)} pts
-                          </Badge>
-                          <div className="text-5xl mb-2">🥇</div>
-                          <div className="text-sm text-gray-400">{users[0].debateCount} debates</div>
-                        </GlowCard>
-                      </motion.div>
+                      {topThreeUsers[0] && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 50 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.5 }}
+                          className="text-center"
+                        >
+                          <GlowCard glowColor={getMedalConfig(0).glow} className="p-8 scale-110">
+                            <Crown className="w-8 h-8 mx-auto mb-2 text-yellow-400" />
+                            <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600 flex items-center justify-center text-white font-bold text-3xl animate-pulse-glow">
+                              {topThreeUsers[0].username.charAt(0).toUpperCase()}
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-2">{topThreeUsers[0].username}</h3>
+                            <Badge className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-white mb-3 text-lg px-4 py-1">
+                              {topThreeUsers[0].totalScore.toFixed(1)} pts
+                            </Badge>
+                            <div className="text-5xl mb-2">🥇</div>
+                            <div className="text-sm text-gray-400">{topThreeUsers[0].debateCount} debates</div>
+                          </GlowCard>
+                        </motion.div>
+                      )}
 
                       {/* Third Place */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 50 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.7 }}
-                        className="text-center"
-                      >
-                        <GlowCard glowColor={getMedalConfig(2).glow} className="p-6">
-                          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-r from-amber-600 to-amber-800 flex items-center justify-center text-white font-bold text-2xl">
-                            {users[2].username.charAt(0).toUpperCase()}
-                          </div>
-                          <h3 className="text-lg font-bold text-white mb-1">{users[2].username}</h3>
-                          <Badge className="bg-gradient-to-r from-amber-600 to-amber-800 text-white mb-2">
-                            {users[2].totalScore.toFixed(1)} pts
-                          </Badge>
-                          <div className="text-4xl mb-2">🥉</div>
-                          <div className="text-sm text-gray-400">{users[2].debateCount} debates</div>
-                        </GlowCard>
-                      </motion.div>
+                      {topThreeUsers[2] && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 50 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.7 }}
+                          className="text-center"
+                        >
+                          <GlowCard glowColor={getMedalConfig(2).glow} className="p-6">
+                            <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-r from-amber-600 to-amber-800 flex items-center justify-center text-white font-bold text-2xl">
+                              {topThreeUsers[2].username.charAt(0).toUpperCase()}
+                            </div>
+                            <h3 className="text-lg font-bold text-white mb-1">{topThreeUsers[2].username}</h3>
+                            <Badge className="bg-gradient-to-r from-amber-600 to-amber-800 text-white mb-2">
+                              {topThreeUsers[2].totalScore.toFixed(1)} pts
+                            </Badge>
+                            <div className="text-4xl mb-2">🥉</div>
+                            <div className="text-sm text-gray-400">{topThreeUsers[2].debateCount} debates</div>
+                          </GlowCard>
+                        </motion.div>
+                      )}
                     </div>
                   </motion.div>
                 )}
@@ -231,7 +272,7 @@ export default function LeaderboardPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.map((user, index) => {
+                      {[...topThreeUsers, ...remainingUsers].map((user, index) => {
                         const medalConfig = getMedalConfig(index)
 
                         return (
@@ -244,17 +285,11 @@ export default function LeaderboardPage() {
                           >
                             <TableCell className="font-medium">
                               <div className="flex items-center gap-2">
-                                {index < 3 ? (
-                                  <div
-                                    className={`w-8 h-8 rounded-full bg-gradient-to-r ${medalConfig.color} flex items-center justify-center text-white font-bold`}
-                                  >
-                                    {typeof medalConfig.emoji === "string" ? medalConfig.emoji : index + 1}
-                                  </div>
-                                ) : (
-                                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
-                                    {index + 1}
-                                  </div>
-                                )}
+                                <div
+                                  className={`w-8 h-8 rounded-full bg-gradient-to-r ${medalConfig.color} flex items-center justify-center text-white font-bold`}
+                                >
+                                  {medalConfig.emoji}
+                                </div>
                               </div>
                             </TableCell>
                             <TableCell>

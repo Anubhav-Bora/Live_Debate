@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useUser } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -17,6 +16,11 @@ import { GlowCard } from "@/components/ui/glow-card"
 import { NeonButton } from "@/components/ui/neon-button"
 import { ArrowLeft, Sparkles, Clock, Globe, Lock, Copy, CheckCircle, Zap, MessageSquare } from "lucide-react"
 
+interface CreatedDebate {
+  id: string
+  joinCodeCon: string
+}
+
 export default function CreateDebatePage() {
   const { user } = useUser()
   const router = useRouter()
@@ -24,45 +28,20 @@ export default function CreateDebatePage() {
   const [duration, setDuration] = useState(180)
   const [isPublic, setIsPublic] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [createdDebate, setCreatedDebate] = useState<unknown>(null)
+  const [createdDebate, setCreatedDebate] = useState<CreatedDebate | null>(null)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!topic.trim()) {
-      toast.error("Topic is required")
-      return
-    }
-
-    setLoading(true)
+  const copyToClipboard = async (text: string, description: string) => {
     try {
-      const res = await fetch("/api/debates", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          topic,
-          duration,
-          isPublic,
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setCreatedDebate(data)
-        toast.success("Debate created successfully!")
-      } else {
-        const errorData = await res.json()
-        toast.error(errorData.error || "Failed to create debate")
-      }
+      await navigator.clipboard.writeText(text)
+      toast.success(`${description} copied to clipboard`)
     } catch (err) {
-      console.error(err)
-      toast.error("An unexpected error occurred")
-    } finally {
-      setLoading(false)
+      toast.error("Failed to copy to clipboard")
     }
   }
 
-  const handleCreate = async () => {
+  const handleCreate = async (e?: React.FormEvent) => {
+    e?.preventDefault()
+    
     if (!topic.trim()) {
       toast.error("Topic is required")
       return
@@ -81,17 +60,18 @@ export default function CreateDebatePage() {
           isPublic,
         }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        setCreatedDebate(data)
-        toast.success("Debate created successfully!")
-      } else {
+
+      if (!res.ok) {
         const errorData = await res.json()
-        toast.error(errorData.error || "Failed to create debate")
+        throw new Error(errorData.error || "Failed to create debate")
       }
+
+      const data = await res.json()
+      setCreatedDebate(data)
+      toast.success("Debate created successfully!")
     } catch (err) {
       console.error(err)
-      toast.error("An unexpected error occurred")
+      toast.error(err instanceof Error ? err.message : "An unexpected error occurred")
     } finally {
       setLoading(false)
     }
@@ -151,7 +131,10 @@ export default function CreateDebatePage() {
                         readOnly
                         className="bg-white/5 border-white/20 text-white font-mono"
                       />
-                      <NeonButton variant="outline" onClick={() => copyToClipboard(createdDebate.id, "Debate ID")}>
+                      <NeonButton 
+                        variant="outline" 
+                        onClick={() => copyToClipboard(createdDebate.id, "Debate ID")}
+                      >
                         <Copy className="w-4 h-4" />
                       </NeonButton>
                     </div>
@@ -231,7 +214,7 @@ export default function CreateDebatePage() {
             </CardHeader>
 
             <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-6">
+              <form onSubmit={handleCreate} className="space-y-6">
                 <div className="space-y-2">
                   <Label htmlFor="topic" className="text-white font-semibold">
                     Debate Topic

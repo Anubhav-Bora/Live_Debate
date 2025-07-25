@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs"
 import { motion } from "framer-motion"
 import Link from "next/link"
@@ -13,15 +12,81 @@ import { GlowCard } from "@/components/ui/glow-card"
 import { NeonButton } from "@/components/ui/neon-button"
 import { Sparkles, Zap, Trophy, MessageSquare, Brain, Users } from "lucide-react"
 
+interface FeatureCard {
+  title: string
+  description: string
+  icon: React.ReactNode
+  color: string
+  gradient: string
+}
+
+interface StepCard {
+  step: string
+  title: string
+  description: string
+  icon: string
+}
+
 export default function Home() {
   const [debateId, setDebateId] = useState("")
 
   const handleJoinDebate = (e: React.FormEvent) => {
     e.preventDefault()
-    if (debateId) {
+    if (debateId.trim()) {
       window.location.href = `/debates/${debateId}`
     }
   }
+
+  const features: FeatureCard[] = [
+    {
+      title: "Real-Time Debates",
+      description: "Engage in live, structured debates with participants worldwide using cutting-edge video technology",
+      icon: <MessageSquare className="w-8 h-8" />,
+      color: "rgba(99, 102, 241, 0.3)",
+      gradient: "from-indigo-500 to-blue-600",
+    },
+    {
+      title: "AI-Powered Analysis",
+      description: "Receive instant, detailed feedback on your arguments, logic, and presentation style from advanced AI",
+      icon: <Brain className="w-8 h-8" />,
+      color: "rgba(139, 92, 246, 0.3)",
+      gradient: "from-purple-500 to-pink-600",
+    },
+    {
+      title: "Global Leaderboard",
+      description: "Climb the ranks, earn badges, and showcase your debating prowess to the world",
+      icon: <Trophy className="w-8 h-8" />,
+      color: "rgba(16, 185, 129, 0.3)",
+      gradient: "from-emerald-500 to-teal-600",
+    },
+  ]
+
+  const steps: StepCard[] = [
+    {
+      step: "01",
+      title: "Create or Join",
+      description: "Start a new debate topic or join an existing discussion",
+      icon: "🚀",
+    },
+    {
+      step: "02",
+      title: "Get Connected",
+      description: "Share your debate ID and connect with your opponent",
+      icon: "🔗",
+    },
+    {
+      step: "03",
+      title: "Debate Live",
+      description: "Engage in structured, timed debates with video and audio",
+      icon: "⚡",
+    },
+    {
+      step: "04",
+      title: "AI Insights",
+      description: "Receive detailed performance analysis and improvement tips",
+      icon: "🧠",
+    },
+  ]
 
   return (
     <div className="min-h-screen relative overflow-hidden">
@@ -148,31 +213,7 @@ export default function Home() {
           </motion.h2>
 
           <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                title: "Real-Time Debates",
-                description:
-                  "Engage in live, structured debates with participants worldwide using cutting-edge video technology",
-                icon: <MessageSquare className="w-8 h-8" />,
-                color: "rgba(99, 102, 241, 0.3)",
-                gradient: "from-indigo-500 to-blue-600",
-              },
-              {
-                title: "AI-Powered Analysis",
-                description:
-                  "Receive instant, detailed feedback on your arguments, logic, and presentation style from advanced AI",
-                icon: <Brain className="w-8 h-8" />,
-                color: "rgba(139, 92, 246, 0.3)",
-                gradient: "from-purple-500 to-pink-600",
-              },
-              {
-                title: "Global Leaderboard",
-                description: "Climb the ranks, earn badges, and showcase your debating prowess to the world",
-                icon: <Trophy className="w-8 h-8" />,
-                color: "rgba(16, 185, 129, 0.3)",
-                gradient: "from-emerald-500 to-teal-600",
-              },
-            ].map((feature, index) => (
+            {features.map((feature, index) => (
               <motion.div
                 key={feature.title}
                 initial={{ opacity: 0, y: 50 }}
@@ -209,32 +250,7 @@ export default function Home() {
           </motion.h2>
 
           <div className="grid md:grid-cols-4 gap-8">
-            {[
-              {
-                step: "01",
-                title: "Create or Join",
-                description: "Start a new debate topic or join an existing discussion",
-                icon: "🚀",
-              },
-              {
-                step: "02",
-                title: "Get Connected",
-                description: "Share your debate ID and connect with your opponent",
-                icon: "🔗",
-              },
-              {
-                step: "03",
-                title: "Debate Live",
-                description: "Engage in structured, timed debates with video and audio",
-                icon: "⚡",
-              },
-              {
-                step: "04",
-                title: "AI Insights",
-                description: "Receive detailed performance analysis and improvement tips",
-                icon: "🧠",
-              },
-            ].map((step, index) => (
+            {steps.map((step, index) => (
               <motion.div
                 key={step.title}
                 initial={{ opacity: 0, y: 50 }}

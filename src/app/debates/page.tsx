@@ -6,7 +6,7 @@ import { motion } from "framer-motion"
 import { CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AnimatedBackground } from "@/components/ui/animated-background"
 import { GlowCard } from "@/components/ui/glow-card"
@@ -14,14 +14,34 @@ import { NeonButton } from "@/components/ui/neon-button"
 import { Plus, Filter, MessageSquare, Clock, Eye, Zap, Target, Trophy, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
+interface User {
+  username: string
+  clerkId: string
+}
+
 interface Debate {
   id: string
   topic: string
   status: "waiting" | "in-progress" | "completed"
   createdAt: string
-  proUser: { username: string; clerkId: string } | null
-  conUser: { username: string; clerkId: string } | null
+  proUser: User | null
+  conUser: User | null
   _count: { messages: number }
+}
+
+type FilterType = "all" | "waiting" | "in-progress" | "completed"
+
+interface FilterOption {
+  value: FilterType
+  label: string
+  icon: React.ReactNode
+}
+
+interface StatusConfig {
+  color: string
+  icon: React.ReactNode
+  text: string
+  glow: string
 }
 
 export default function DebatesPage() {
@@ -29,33 +49,51 @@ export default function DebatesPage() {
   const [debates, setDebates] = useState<Debate[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [filter, setFilter] = useState<"all" | "waiting" | "in-progress" | "completed">("all")
+  const [filter, setFilter] = useState<FilterType>("all")
 
   useEffect(() => {
+    let isMounted = true
+    const abortController = new AbortController()
+
     const fetchDebates = async () => {
       try {
-        const res = await fetch("/api/debates")
-        if (res.ok) {
-          const data = await res.json()
+        const res = await fetch("/api/debates", {
+          signal: abortController.signal
+        })
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`)
+        const data = await res.json()
+        if (isMounted) {
           setDebates(data)
         }
       } catch (error) {
-        console.error("Error fetching debates:", error)
+        if (error instanceof Error && error.name !== 'AbortError') {
+          console.error("Error fetching debates:", error)
+          toast.error("Failed to load debates. Please try again.")
+        }
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     fetchDebates()
+
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
   }, [])
 
-  const filteredDebates = debates.filter((debate) => {
-    const matchesSearch = debate.topic.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesFilter = filter === "all" || debate.status === filter
-    return matchesSearch && matchesFilter
-  })
+  const filteredDebates = useMemo(() => {
+    return debates.filter((debate) => {
+      const matchesSearch = debate.topic.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesFilter = filter === "all" || debate.status === filter
+      return matchesSearch && matchesFilter
+    })
+  }, [debates, searchTerm, filter])
 
-  const getStatusConfig = (status: string) => {
+  const getStatusConfig = (status: string): StatusConfig => {
     switch (status) {
       case "waiting":
         return {
@@ -88,7 +126,7 @@ export default function DebatesPage() {
     }
   }
 
-  const filterOptions = [
+  const filterOptions: FilterOption[] = [
     { value: "all", label: "All Arenas", icon: <Filter className="w-4 h-4" /> },
     { value: "waiting", label: "Waiting", icon: <Clock className="w-4 h-4" /> },
     { value: "in-progress", label: "Live", icon: <Zap className="w-4 h-4" /> },
@@ -98,23 +136,31 @@ export default function DebatesPage() {
   const handleDeleteDebate = async (debateId: string, event: React.MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    if (!user?.id) return
+    
+    if (!user?.id) {
+      toast.error("You must be signed in to delete debates")
+      return
+    }
+
     if (!confirm("Are you sure you want to delete this debate? This action cannot be undone.")) return
+    
     try {
       const res = await fetch(`/api/debates/${debateId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: user.id }),
       })
-      if (res.ok) {
-        setDebates(prev => prev.filter(d => d.id !== debateId))
-        toast.success("Debate deleted successfully")
-      } else {
+
+      if (!res.ok) {
         const errorData = await res.json()
-        toast.error(errorData.error || "Failed to delete debate")
+        throw new Error(errorData.error || "Failed to delete debate")
       }
-    } catch {
-      toast.error("An error occurred while deleting the debate")
+
+      setDebates(prev => prev.filter(d => d.id !== debateId))
+      toast.success("Debate deleted successfully")
+    } catch (error) {
+      console.error("Delete error:", error)
+      toast.error(error instanceof Error ? error.message : "An error occurred while deleting the debate")
     }
   }
 
@@ -195,7 +241,7 @@ export default function DebatesPage() {
                     key={option.value}
                     variant={filter === option.value ? "primary" : "outline"}
                     size="sm"
-                    onClick={() => setFilter(option.value as "all" | "waiting" | "in-progress" | "completed")}
+                    onClick={() => setFilter(option.value)}
                     className="whitespace-nowrap"
                   >
                     {option.icon}
@@ -248,7 +294,6 @@ export default function DebatesPage() {
                 >
                   <Link href={`/debates/${debate.id}`}>
                     <GlowCard glowColor={statusConfig.glow} className="h-full cursor-pointer group relative">
-                      {/* Delete Button - Only show for debate creator */}
                       {debate.proUser?.clerkId === user?.id && (
                         <button
                           onClick={e => handleDeleteDebate(debate.id, e)}

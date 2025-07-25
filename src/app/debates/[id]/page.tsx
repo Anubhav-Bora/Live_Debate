@@ -96,7 +96,7 @@ export default function DebatePage() {
           setLoading(false)
           toast.error(`Failed to fetch debate: ${res.status}`)
         }
-      } catch (error) {
+      } catch {
         setDebate(null)
         setLoading(false)
         toast.error("Error fetching debate")
@@ -110,7 +110,7 @@ export default function DebatePage() {
 
   useEffect(() => {
     if (!socket) return
-    const onStarted = ({ startTime, duration }: { startTime: string; duration: number }) => {
+    const onStarted = ({ duration }: { startTime: string; duration: number }) => {
       setDebateStatus("in-progress")
       setTimer(duration)
     }
@@ -133,7 +133,6 @@ export default function DebatePage() {
     if (debate?.status) setDebateStatus(debate.status)
   }, [debate?.status])
 
-  // Fetch messages
   useEffect(() => {
     if (!id) return
     const fetchMessages = async () => {
@@ -142,7 +141,7 @@ export default function DebatePage() {
         if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
         const data = await res.json()
         setMessages(data)
-      } catch (error) {
+      } catch {
         // ignore for now
       }
     }
@@ -152,7 +151,6 @@ export default function DebatePage() {
     return () => clearInterval(interval)
   }, [id])
 
-  // Timer logic
   useEffect(() => {
     if (debateStatus !== "in-progress" || !timer) return
     setTimeLeft(timer)
@@ -174,7 +172,6 @@ export default function DebatePage() {
     }
   }, [debateStatus, timer])
 
-  // Listen for AI feedback
   useEffect(() => {
     if (!socket) return
     const onFeedback = (feedback: Feedback) => {
@@ -211,10 +208,12 @@ export default function DebatePage() {
         try {
           const errorData = await res.json()
           errorMsg = errorData.error || errorMsg
-        } catch (e) {}
+        } catch {
+          // ignore JSON parse error
+        }
         toast.error(errorMsg)
       }
-    } catch (error) {
+    } catch {
       toast.error("An error occurred while joining")
     }
   }
@@ -242,7 +241,7 @@ export default function DebatePage() {
       })
       if (!res.ok) throw new Error(await res.text())
       setNewMessage("")
-    } catch (error) {
+    } catch {
       toast.error("Failed to send message")
     } finally {
       setIsSending(false)
@@ -284,13 +283,11 @@ export default function DebatePage() {
   const handleDeleteDebate = async () => {
     if (!user?.id || !id) return
     
-    // Only allow creator to delete
     if (debate?.proUser?.id !== user.id) {
       toast.error("Only the debate creator can delete this debate")
       return
     }
     
-    // Confirmation dialog
     if (!confirm("Are you sure you want to delete this debate? This action cannot be undone.")) {
       return
     }
@@ -313,12 +310,12 @@ export default function DebatePage() {
         const errorData = await res.json()
         toast.error(errorData.error || "Failed to delete debate")
       }
-    } catch (error) {
+    } catch {
       toast.error("An error occurred while deleting the debate")
     }
   }
 
-  const handleRemoveParticipant = async (participantType: "con") => {
+  const handleRemoveParticipant = async (_participantType: "con") => {
     if (!user?.id || !id) return;
     if (debate?.proUser?.id !== user.id) {
       toast.error("Only the debate creator can remove participants");
@@ -339,7 +336,7 @@ export default function DebatePage() {
         const errorData = await res.json();
         toast.error(errorData.error || "Failed to remove participant");
       }
-    } catch (error) {
+    } catch {
       toast.error("An error occurred while removing the participant");
     }
   };
@@ -484,7 +481,6 @@ export default function DebatePage() {
                     <Badge className="bg-red-500/20 text-red-300 border-red-500/30">You</Badge>
                   )}
                 </div>
-                {/* Remove button - only show for debate creator */}
                 {debate.proUser?.id === user?.id && (
                   <button
                     onClick={() => handleRemoveParticipant("con")}
@@ -580,7 +576,6 @@ export default function DebatePage() {
             transition={{ delay: 0.5 }}
             className="mb-8"
           >
-            {/* Start Debate button for pro user when waiting */}
             {role === "pro" && debateStatus === "waiting" && (
               <div className="mb-6 flex justify-center">
                 <NeonButton onClick={handleStartDebate} disabled={!isConnected} size="lg">
@@ -594,7 +589,6 @@ export default function DebatePage() {
               <VideoDebateRoom debateId={id} userId={user.id} role={role} />
             </GlowCard>
 
-            {/* Chat Section */}
             <GlowCard className="mt-6">
               <div className="flex items-center gap-2 p-4 border-b border-white/10">
                 <MessageSquare className="w-5 h-5 text-indigo-400" />
@@ -663,7 +657,6 @@ export default function DebatePage() {
               </div>
             </GlowCard>
 
-            {/* AI Feedback after debate ends */}
             {debateStatus === "completed" && aiFeedback && (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
                 <GlowCard glowColor="rgba(139, 92, 246, 0.4)">
@@ -673,7 +666,6 @@ export default function DebatePage() {
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-6">
-                    {/* Pro Feedback */}
                     <div className="space-y-4">
                       <h4 className="text-xl font-semibold text-green-400 flex items-center gap-2">
                         <Target className="w-5 h-5" />
@@ -717,7 +709,6 @@ export default function DebatePage() {
                       </div>
                     </div>
 
-                    {/* Con Feedback */}
                     <div className="space-y-4">
                       <h4 className="text-xl font-semibold text-red-400 flex items-center gap-2">
                         <Zap className="w-5 h-5" />

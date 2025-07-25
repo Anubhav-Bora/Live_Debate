@@ -2,7 +2,7 @@
 
 import { useUser } from "@clerk/nextjs"
 import { useParams } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { motion } from "framer-motion"
@@ -26,65 +26,100 @@ import {
   Star,
 } from "lucide-react"
 
+interface DebateScore {
+  logic: number
+  clarity: number
+  persuasiveness: number
+  tone: number
+  debate: {
+    topic: string
+    id: string
+  }
+}
+
+interface Badge {
+  id: string
+  name: string
+  description: string
+  icon: string
+  earnedAt: string
+}
+
 interface UserProfile {
   id: string
   username: string
   email: string
   createdAt: string
-  scores: Array<{
-    logic: number
-    clarity: number
-    persuasiveness: number
-    tone: number
-    debate: { topic: string; id: string }
-  }>
-  badges: Array<{
-    id: string
-    name: string
-    description: string
-    icon: string
-    earnedAt: string
-  }>
+  scores: DebateScore[]
+  badges: Badge[]
   totalScore: number
   debateCount: number
 }
 
+type ScoreColor = "from-green-500 to-emerald-500" | "from-yellow-500 to-orange-500" | "from-red-500 to-pink-500"
+type ScoreGlow = "rgba(34, 197, 94, 0.3)" | "rgba(245, 158, 11, 0.3)" | "rgba(239, 68, 68, 0.3)"
+
 export default function ProfilePage() {
-  const { userId } = useParams()
+  const { userId } = useParams<{ userId: string }>()
   const { user: currentUser } = useUser()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    let isMounted = true
+    const abortController = new AbortController()
+
     const fetchProfile = async () => {
       try {
         setLoading(true)
-        const res = await fetch(`/api/users/${userId}`)
-        if (res.ok) {
-          const data = await res.json()
+        setError(null)
+        const res = await fetch(`/api/users/${userId}`, {
+          signal: abortController.signal
+        })
+
+        if (!res.ok) {
+          throw new Error(`Failed to fetch profile: ${res.status}`)
+        }
+
+        const data = await res.json()
+        if (isMounted) {
           setProfile(data)
         }
-      } catch (error) {
-        console.error("Error fetching profile:", error)
+      } catch (err) {
+        if (err instanceof Error && err.name !== 'AbortError') {
+          console.error("Error fetching profile:", err)
+          setError(err.message)
+        }
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     fetchProfile()
+
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
   }, [userId])
 
-  const getScoreColor = (score: number) => {
+  const getScoreColor = (score: number): ScoreColor => {
     if (score >= 8) return "from-green-500 to-emerald-500"
     if (score >= 6) return "from-yellow-500 to-orange-500"
     return "from-red-500 to-pink-500"
   }
 
-  const getScoreGlow = (score: number) => {
+  const getScoreGlow = (score: number): ScoreGlow => {
     if (score >= 8) return "rgba(34, 197, 94, 0.3)"
     if (score >= 6) return "rgba(245, 158, 11, 0.3)"
     return "rgba(239, 68, 68, 0.3)"
   }
+
+  const recentScores = useMemo(() => profile?.scores.slice(0, 5) || [], [profile])
+  const isCurrentUser = currentUser?.id === userId
 
   if (loading) {
     return (
@@ -112,15 +147,19 @@ export default function ProfilePage() {
     )
   }
 
-  if (!profile) {
+  if (error || !profile) {
     return (
       <div className="min-h-screen relative overflow-hidden">
         <AnimatedBackground />
         <div className="relative z-10 container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
           <GlowCard className="text-center">
             <User className="w-16 h-16 mx-auto mb-4 text-indigo-400 opacity-50" />
-            <h2 className="text-2xl font-bold text-white mb-4">Profile Not Found</h2>
-            <p className="text-gray-300 mb-6">The user profile you&apos;re looking for doesn&apos;t exist.</p>
+            <h2 className="text-2xl font-bold text-white mb-4">
+              {error ? "Error Loading Profile" : "Profile Not Found"}
+            </h2>
+            <p className="text-gray-300 mb-6">
+              {error || "The user profile you're looking for doesn't exist."}
+            </p>
             <Link href="/leaderboard">
               <NeonButton variant="outline">
                 <ArrowLeft className="w-4 h-4 mr-2" />
@@ -188,7 +227,7 @@ export default function ProfilePage() {
                 </div>
               </div>
               
-              {currentUser?.id === userId && (
+              {isCurrentUser && (
                 <NeonButton variant="outline">
                   <Edit className="w-4 h-4 mr-2" />
                   Edit Profile
@@ -270,11 +309,11 @@ export default function ProfilePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {profile.scores.length > 0 ? (
+                {recentScores.length > 0 ? (
                   <div className="space-y-4">
-                    {profile.scores.slice(0, 5).map((score, index) => (
+                    {recentScores.map((score, index) => (
                       <motion.div
-                        key={index}
+                        key={`${score.debate.id}-${index}`}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 0.8 + index * 0.1 }}
@@ -369,12 +408,12 @@ export default function ProfilePage() {
               <CardContent>
                 {profile.badges.length > 0 ? (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    {profile.badges.map((badge, index) => (
+                    {profile.badges.map((badge) => (
                       <motion.div
                         key={badge.id}
                         initial={{ opacity: 0, scale: 0.8 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.8 + index * 0.1 }}
+                        transition={{ delay: 0.8 }}
                         whileHover={{ scale: 1.05 }}
                         className="text-center p-4 rounded-lg bg-gradient-to-b from-white/5 to-white/10 border border-white/10 hover:border-yellow-500/30 transition-all"
                       >
