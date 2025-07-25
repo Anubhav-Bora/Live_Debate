@@ -10,10 +10,7 @@ interface MessagePostData {
   role: 'PRO' | 'CON' | 'MODERATOR' | 'SYSTEM';
 }
 
-export const GET = async (
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) => {
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const messages = await prisma.message.findMany({
       where: { debateId: params.id },
@@ -48,12 +45,9 @@ export const GET = async (
       }
     );
   }
-};
+}
 
-export const POST = async (
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) => {
+export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { userId, content, role } = await request.json() as MessagePostData;
     
@@ -129,9 +123,9 @@ export const POST = async (
       }
     );
   }
-};
+}
 
-export const OPTIONS = async () => {
+export async function OPTIONS() {
   return new NextResponse(null, {
     headers: {
       'Access-Control-Allow-Origin': '*',
@@ -139,4 +133,7 @@ export const OPTIONS = async () => {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     }
   });
-};
+}
+
+// Explicitly declare the route exports
+export { GET, POST, OPTIONS };
