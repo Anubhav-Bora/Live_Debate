@@ -6,10 +6,10 @@ export function useSpeechRecognition(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled) {
-      (recognitionRef.current as any)?.stop();
+      (recognitionRef.current as { stop?: () => void })?.stop?.();
       return;
     }
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition, webkitSpeechRecognition?: typeof window.SpeechRecognition }).SpeechRecognition || (window as unknown as { SpeechRecognition?: typeof window.SpeechRecognition, webkitSpeechRecognition?: typeof window.SpeechRecognition }).webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Speech recognition not supported in this browser.");
       return;
@@ -28,7 +28,7 @@ export function useSpeechRecognition(enabled: boolean) {
     };
     recognition.start();
     recognitionRef.current = recognition;
-    return () => (recognitionRef.current as any)?.stop();
+    return () => (recognitionRef.current as { stop?: () => void })?.stop?.();
   }, [enabled]);
 
   return transcript;

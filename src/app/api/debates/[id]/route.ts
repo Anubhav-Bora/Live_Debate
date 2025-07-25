@@ -202,7 +202,6 @@ export async function POST(
             }
           }
         } catch (err) {
-          // Fallback to static scores if AI fails
           aiScores = null;
         }
         // Save scores for pro and con
