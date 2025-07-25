@@ -146,56 +146,57 @@ export async function POST(request: Request, context: Params) {
           .map((m) => `${m.sender.username} (${m.role}): ${m.content}`)
           .join("\n");
 
-        const prompt = `Analyze this debate... \nTranscript:\n${transcript}`;
+        const prompt = `Analyze this debate transcript and score both participants (pro and con) on four criteria: logic, clarity, persuasiveness, and tone. 
+        Provide only the scores as numbers in this exact format:
+        Pro: [logic], [clarity], [persuasiveness], [tone]
+        Con: [logic], [clarity], [persuasiveness], [tone]
+        
+        Debate Topic: ${updatedDebate.topic}
+        Transcript:\n${transcript}`;
+
         let aiScores: AIScores | null = null;
 
         try {
-          const response = await fetch(
-            "https://openrouter.ai/api/v1/chat/completions",
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: "openai/gpt-4",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.7,
-                max_tokens: 1500,
-              }),
-            }
-          );
+          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "openai/gpt-4",
+              messages: [{ role: "user", content: prompt }],
+              temperature: 0.7,
+              max_tokens: 1500,
+            }),
+          });
 
           const data = await response.json();
-          const analysis = data.choices?.[0]?.message?.content || "";
+          const analysis = data.choices[0]?.message?.content;
 
-          let allScores: number[] = [];
-          if (typeof analysis === "string") {
-            const matches = Array.from(analysis.matchAll(/(\d{1,2})/g));
-            allScores = matches.map((m) => parseInt(m[1]));
+          if (analysis) {
+            const proMatch = analysis.match(/Pro:\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)/);
+            const conMatch = analysis.match(/Con:\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)/);
+
+            if (proMatch && conMatch) {
+              aiScores = {
+                pro: {
+                  logic: parseInt(proMatch[1]),
+                  clarity: parseInt(proMatch[2]),
+                  persuasiveness: parseInt(proMatch[3]),
+                  tone: parseInt(proMatch[4]),
+                },
+                con: {
+                  logic: parseInt(conMatch[1]),
+                  clarity: parseInt(conMatch[2]),
+                  persuasiveness: parseInt(conMatch[3]),
+                  tone: parseInt(conMatch[4]),
+                }
+              };
+            }
           }
-
-          aiScores = {
-            pro: allScores.length >= 4
-              ? {
-                  logic: allScores[0],
-                  clarity: allScores[1],
-                  persuasiveness: allScores[2],
-                  tone: allScores[3],
-                }
-              : undefined,
-            con: allScores.length >= 8
-              ? {
-                  logic: allScores[4],
-                  clarity: allScores[5],
-                  persuasiveness: allScores[6],
-                  tone: allScores[7],
-                }
-              : undefined,
-          };
-        } catch {
-          aiScores = null;
+        } catch (error) {
+          console.error("OpenRouter API error:", error);
         }
 
         const proScore = aiScores?.pro || {

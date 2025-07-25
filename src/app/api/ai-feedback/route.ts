@@ -12,6 +12,8 @@ export async function POST(req: Request) {
     const debate = await prisma.debate.findUnique({
       where: { id: debateId },
       include: {
+
+
         messages: {
           orderBy: { createdAt: "asc" },
           take: 20 // Get last 20 messages for context
