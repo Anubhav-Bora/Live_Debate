@@ -10,10 +10,10 @@ interface MessagePostData {
   role: 'PRO' | 'CON' | 'MODERATOR' | 'SYSTEM';
 }
 
-export async function GET(
+export const GET = async (
   request: NextRequest,
   { params }: { params: { id: string } }
-) {
+) => {
   try {
     const messages = await prisma.message.findMany({
       where: { debateId: params.id },
@@ -23,9 +23,6 @@ export async function GET(
             id: true,
             clerkId: true,
             username: true,
-            // Remove imageUrl if it doesn't exist in your Prisma model
-            // If you need profile images, ensure your User model has this field
-            // imageUrl: true  
           }
         } 
       },
@@ -51,12 +48,12 @@ export async function GET(
       }
     );
   }
-}
+};
 
-export async function POST(
+export const POST = async (
   request: NextRequest,
   { params }: { params: { id: string } }
-) {
+) => {
   try {
     const { userId, content, role } = await request.json() as MessagePostData;
     
@@ -79,7 +76,6 @@ export async function POST(
         id: true,
         clerkId: true,
         username: true
-        // Remove imageUrl if not in your model
       }
     });
 
@@ -109,7 +105,6 @@ export async function POST(
             id: true,
             clerkId: true,
             username: true
-            // Remove imageUrl if not in your model
           }
         } 
       }
@@ -134,9 +129,9 @@ export async function POST(
       }
     );
   }
-}
+};
 
-export async function OPTIONS() {
+export const OPTIONS = async () => {
   return new NextResponse(null, {
     headers: {
       'Access-Control-Allow-Origin': '*',
@@ -144,4 +139,4 @@ export async function OPTIONS() {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     }
   });
-}
+};
