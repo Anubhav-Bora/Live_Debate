@@ -109,7 +109,7 @@ export default function LeaderboardPage() {
                 <NeonButton
                   key={option.value}
                   variant={timeRange === option.value ? "primary" : "outline"}
-                  onClick={() => setTimeRange(option.value as any)}
+                  onClick={() => setTimeRange(option.value as 'week' | 'month' | 'all')}
                 >
                   {option.icon}
                   <span className="ml-2">{option.label}</span>

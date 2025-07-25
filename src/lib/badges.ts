@@ -91,7 +91,7 @@ export async function checkBadges(userId: string, prisma: any) {
   ).length;
 
   const totalScores = user.scores.reduce(
-    (acc: Score, score: Score) => {
+    (acc: { logic: number; clarity: number; persuasiveness: number }, score: { logic: number; clarity: number; persuasiveness: number }) => {
       acc.logic += score.logic;
       acc.clarity += score.clarity;
       acc.persuasiveness += score.persuasiveness;

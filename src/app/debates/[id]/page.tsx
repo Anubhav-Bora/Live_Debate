@@ -32,23 +32,47 @@ import {
   Trash2,
   X,
 } from "lucide-react"
+import type { Debate } from "@/types/Debate";
+
+interface Message {
+  id: string;
+  content: string;
+  createdAt: string;
+  role: string;
+  sender: { id: string; username: string };
+}
+
+interface Feedback {
+  pro?: {
+    score?: number;
+    mistakes?: string[];
+    improvements?: string[];
+    feedback?: string;
+  };
+  con?: {
+    score?: number;
+    mistakes?: string[];
+    improvements?: string[];
+    feedback?: string;
+  };
+}
 
 export default function DebatePage() {
   const params = useParams()
   const id = params?.id as string
   const { user } = useUser()
   const router = useRouter()
-  const [debate, setDebate] = useState<unknown>(null)
+  const [debate, setDebate] = useState<Debate | null>(null)
   const [role, setRole] = useState<"pro" | "con" | "viewer">("viewer")
   const [joinCode, setJoinCode] = useState("")
   const [loading, setLoading] = useState(true)
   const { socket, isConnected } = useSocket()
   const [debateStatus, setDebateStatus] = useState<string>(debate?.status || "waiting")
   const [timer, setTimer] = useState<number | null>(null)
-  const [messages, setMessages] = useState<unknown[]>([])
+  const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [isSending, setIsSending] = useState(false)
-  const [aiFeedback, setAiFeedback] = useState<unknown>(null)
+  const [aiFeedback, setAiFeedback] = useState<Feedback | null>(null)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const timerInterval = useRef<NodeJS.Timeout | null>(null)
 
@@ -61,9 +85,9 @@ export default function DebatePage() {
           const data = await res.json()
           setDebate(data)
           if (user?.id) {
-            if (data.proUser?.clerkId === user.id) {
+            if (data.proUser?.id === user.id) {
               setRole("pro")
-            } else if (data.conUser?.clerkId === user.id) {
+            } else if (data.conUser?.id === user.id) {
               setRole("con")
             }
           }
@@ -153,7 +177,7 @@ export default function DebatePage() {
   // Listen for AI feedback
   useEffect(() => {
     if (!socket) return
-    const onFeedback = (feedback: any) => {
+    const onFeedback = (feedback: Feedback) => {
       setAiFeedback(feedback)
     }
 
@@ -261,7 +285,7 @@ export default function DebatePage() {
     if (!user?.id || !id) return
     
     // Only allow creator to delete
-    if (debate.proUser?.clerkId !== user.id) {
+    if (debate?.proUser?.id !== user.id) {
       toast.error("Only the debate creator can delete this debate")
       return
     }
@@ -296,7 +320,7 @@ export default function DebatePage() {
 
   const handleRemoveParticipant = async (participantType: "con") => {
     if (!user?.id || !id) return;
-    if (debate.proUser?.clerkId !== user.id) {
+    if (debate?.proUser?.id !== user.id) {
       toast.error("Only the debate creator can remove participants");
       return;
     }
@@ -384,7 +408,7 @@ export default function DebatePage() {
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Arena
             </NeonButton>
-            {debate.proUser?.clerkId === user?.id && (
+            {debate.proUser?.id === user?.id && (
               <NeonButton 
                 variant="outline" 
                 onClick={handleDeleteDebate}
@@ -403,7 +427,7 @@ export default function DebatePage() {
             <GlowCard className="bg-yellow-500/10 border-yellow-500/30">
               <div className="text-yellow-300 text-sm">
                 <div>
-                  <strong>Debug:</strong> Join code for Con: <span className="font-mono">{debate.joinCodeCon}</span>
+                  <strong>Debug:</strong> Join code for Con: <span className="font-mono">{debate.joinCode}</span>
                 </div>
                 <div>
                   Debate ID: <span className="font-mono">{debate.id}</span>
@@ -433,7 +457,7 @@ export default function DebatePage() {
                 </div>
                 <div>
                   <div className="text-white font-semibold">{debate.proUser.username}</div>
-                  {debate.proUser.clerkId === user?.id && (
+                  {debate.proUser.id === user?.id && (
                     <Badge className="bg-green-500/20 text-green-300 border-green-500/30">You</Badge>
                   )}
                 </div>
@@ -456,12 +480,12 @@ export default function DebatePage() {
                 </div>
                 <div className="flex-1">
                   <div className="text-white font-semibold">{debate.conUser.username}</div>
-                  {debate.conUser.clerkId === user?.id && (
+                  {debate.conUser.id === user?.id && (
                     <Badge className="bg-red-500/20 text-red-300 border-red-500/30">You</Badge>
                   )}
                 </div>
                 {/* Remove button - only show for debate creator */}
-                {debate.proUser?.clerkId === user?.id && (
+                {debate.proUser?.id === user?.id && (
                   <button
                     onClick={() => handleRemoveParticipant("con")}
                     className="p-1 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 hover:bg-red-500/30 transition-all opacity-0 group-hover:opacity-100"
@@ -584,7 +608,7 @@ export default function DebatePage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {messages.map((message) => (
+                    {messages.map((message: Message) => (
                       <motion.div
                         key={message.id}
                         initial={{ opacity: 0, x: -20 }}

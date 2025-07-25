@@ -13,7 +13,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
   const { socket } = useSocket();
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [peer, setPeer] = useState<unknown>(null);
   const [connected, setConnected] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -71,7 +70,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     // Only one peer should initiate (e.g., pro)
     const initiator = role === "pro";
     const p = new SimplePeer({ initiator, trickle: false, stream });
-    setPeer(p);
 
     p.on("signal", (data: unknown) => {
       console.log("[VideoDebateRoom] Sending signal:", data);

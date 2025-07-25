@@ -1,0 +1,50 @@
+{
+  "node": {
+    "7f2cd5600b693d288840fa49df3183db1fbfac01ac": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22D%3A%5C%5CwebDev%20Projects%5C%5Clive-ai-debate-arena%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%7B%22id%22%3A%227f2cd5600b693d288840fa49df3183db1fbfac01ac%22%2C%22exportedName%22%3A%22createOrReadKeylessAction%22%7D%2C%7B%22id%22%3A%227f320de15c96dfc878dd7dba59db6bfc3a9cd334f8%22%2C%22exportedName%22%3A%22syncKeylessConfigAction%22%7D%2C%7B%22id%22%3A%227f537a2f9fd5884f1ba9f37d508256dddf8f8ad977%22%2C%22exportedName%22%3A%22deleteKeylessAction%22%7D%5D%5D%2C%5B%22D%3A%5C%5CwebDev%20Projects%5C%5Clive-ai-debate-arena%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Cserver-actions.js%22%2C%5B%7B%22id%22%3A%227fe8ac206f67c28532bbe27d6182eeccc367bca465%22%2C%22exportedName%22%3A%22invalidateCacheAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "7f320de15c96dfc878dd7dba59db6bfc3a9cd334f8": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22D%3A%5C%5CwebDev%20Projects%5C%5Clive-ai-debate-arena%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%7B%22id%22%3A%227f2cd5600b693d288840fa49df3183db1fbfac01ac%22%2C%22exportedName%22%3A%22createOrReadKeylessAction%22%7D%2C%7B%22id%22%3A%227f320de15c96dfc878dd7dba59db6bfc3a9cd334f8%22%2C%22exportedName%22%3A%22syncKeylessConfigAction%22%7D%2C%7B%22id%22%3A%227f537a2f9fd5884f1ba9f37d508256dddf8f8ad977%22%2C%22exportedName%22%3A%22deleteKeylessAction%22%7D%5D%5D%2C%5B%22D%3A%5C%5CwebDev%20Projects%5C%5Clive-ai-debate-arena%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Cserver-actions.js%22%2C%5B%7B%22id%22%3A%227fe8ac206f67c28532bbe27d6182eeccc367bca465%22%2C%22exportedName%22%3A%22invalidateCacheAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "7f537a2f9fd5884f1ba9f37d508256dddf8f8ad977": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22D%3A%5C%5CwebDev%20Projects%5C%5Clive-ai-debate-arena%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%7B%22id%22%3A%227f2cd5600b693d288840fa49df3183db1fbfac01ac%22%2C%22exportedName%22%3A%22createOrReadKeylessAction%22%7D%2C%7B%22id%22%3A%227f320de15c96dfc878dd7dba59db6bfc3a9cd334f8%22%2C%22exportedName%22%3A%22syncKeylessConfigAction%22%7D%2C%7B%22id%22%3A%227f537a2f9fd5884f1ba9f37d508256dddf8f8ad977%22%2C%22exportedName%22%3A%22deleteKeylessAction%22%7D%5D%5D%2C%5B%22D%3A%5C%5CwebDev%20Projects%5C%5Clive-ai-debate-arena%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Cserver-actions.js%22%2C%5B%7B%22id%22%3A%227fe8ac206f67c28532bbe27d6182eeccc367bca465%22%2C%22exportedName%22%3A%22invalidateCacheAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "7fe8ac206f67c28532bbe27d6182eeccc367bca465": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22D%3A%5C%5CwebDev%20Projects%5C%5Clive-ai-debate-arena%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Ckeyless-actions.js%22%2C%5B%7B%22id%22%3A%227f2cd5600b693d288840fa49df3183db1fbfac01ac%22%2C%22exportedName%22%3A%22createOrReadKeylessAction%22%7D%2C%7B%22id%22%3A%227f320de15c96dfc878dd7dba59db6bfc3a9cd334f8%22%2C%22exportedName%22%3A%22syncKeylessConfigAction%22%7D%2C%7B%22id%22%3A%227f537a2f9fd5884f1ba9f37d508256dddf8f8ad977%22%2C%22exportedName%22%3A%22deleteKeylessAction%22%7D%5D%5D%2C%5B%22D%3A%5C%5CwebDev%20Projects%5C%5Clive-ai-debate-arena%5C%5Cnode_modules%5C%5C%40clerk%5C%5Cnextjs%5C%5Cdist%5C%5Cesm%5C%5Capp-router%5C%5Cserver-actions.js%22%2C%5B%7B%22id%22%3A%227fe8ac206f67c28532bbe27d6182eeccc367bca465%22%2C%22exportedName%22%3A%22invalidateCacheAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    }
+  },
+  "edge": {},
+  "encryptionKey": "Trzp0U3gKmYgPxcj5t82XFUGnijDA1nxyFa7grGpQOc="
+}

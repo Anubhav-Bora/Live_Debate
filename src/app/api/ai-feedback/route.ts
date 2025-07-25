@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   try {
-    const { debateId, userId, role, message } = await req.json();
+    const { debateId, userId } = await req.json();
     
     const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
     const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";

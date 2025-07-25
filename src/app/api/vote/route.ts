@@ -6,6 +6,7 @@ const prisma = new PrismaClient();
 
 export async function POST(req: Request) {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { userId } = getAuth(req as any);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

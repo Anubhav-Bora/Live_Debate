@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AnimatedBackground } from "@/components/ui/animated-background"
 import { GlowCard } from "@/components/ui/glow-card"
 import { NeonButton } from "@/components/ui/neon-button"
-import { Search, Plus, Filter, MessageSquare, Clock, Eye, Zap, Target, Trophy, Trash2 } from "lucide-react"
+import { Plus, Filter, MessageSquare, Clock, Eye, Zap, Target, Trophy, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 interface Debate {
@@ -195,7 +195,7 @@ export default function DebatesPage() {
                     key={option.value}
                     variant={filter === option.value ? "primary" : "outline"}
                     size="sm"
-                    onClick={() => setFilter(option.value as any)}
+                    onClick={() => setFilter(option.value as "all" | "waiting" | "in-progress" | "completed")}
                     className="whitespace-nowrap"
                   >
                     {option.icon}

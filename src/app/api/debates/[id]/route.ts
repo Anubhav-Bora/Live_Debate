@@ -141,10 +141,10 @@ export async function POST(
         const scoredUserIds = existingScores.map(s => s.userId);
         // Build transcript for AI
         const transcript = updatedDebate.messages
-          .map((msg: any) => `${msg.sender.username} (${msg.role}): ${msg.content}`)
+          .map((msg: { sender: { username: string }; role: string; content: string }) => `${msg.sender.username} (${msg.role}): ${msg.content}`)
           .join("\n");
         const debateTopic = updatedDebate.topic;
-        let aiScores: any = null;
+        let aiScores: Record<string, unknown> = null;
         try {
           const prompt = `\n    Analyze this debate transcript and provide detailed feedback on both participants' performance.\n    \n    Debate Topic: ${debateTopic}\n    \n    Transcript:\n    ${transcript}\n    \n    Provide feedback in the following format for each participant:\n    1. Argument Structure (1-10): Score and detailed analysis\n    2. Logical Consistency (1-10): Score and detailed analysis\n    3. Persuasiveness (1-10): Score and detailed analysis\n    4. Tone and Delivery (1-10): Score and detailed analysis\n    5. Overall Effectiveness (1-10): Score and summary\n    \n    Also provide 3 specific suggestions for improvement for each participant.\n    `;
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -169,7 +169,7 @@ export async function POST(
             const proMatch = analysis.match(/pro.*?(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/i);
             const conMatch = analysis.match(/con.*?(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/i);
             // Fallback: try to extract all numbers in order
-            const allScores = Array.from(analysis.matchAll(/(\d{1,2})/g)).map((m: any) => parseInt(m[1]));
+            const allScores = Array.from(analysis.matchAll(/(\d{1,2})/g)).map((m: RegExpMatchArray) => parseInt(m[1]));
             if (proMatch && proMatch.length >= 5) {
               aiScores.pro = {
                 logic: Number(proMatch[1]),

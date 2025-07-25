@@ -1,15 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-declare global {
-  interface SpeechRecognitionEvent extends Event {
-    resultIndex: number;
-    results: SpeechRecognitionResultList;
-  }
-}
-
 export function useSpeechRecognition(enabled: boolean) {
   const [transcript, setTranscript] = useState("");
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<unknown>(null);
 
   useEffect(() => {
     if (!enabled) {
@@ -25,15 +18,16 @@ export function useSpeechRecognition(enabled: boolean) {
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: unknown) => {
       let finalTranscript = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        finalTranscript += event.results[i][0].transcript;
+      const evt = event as { resultIndex: number; results: ArrayLike<{ 0: { transcript: string } }> };
+      for (let i = evt.resultIndex; i < evt.results.length; ++i) {
+        finalTranscript += evt.results[i][0].transcript;
       }
       setTranscript(finalTranscript);
     };
     recognition.start();
-    (recognitionRef.current as any) = recognition;
+    recognitionRef.current = recognition;
     return () => (recognitionRef.current as any)?.stop();
   }, [enabled]);
 
