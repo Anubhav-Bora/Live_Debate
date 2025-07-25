@@ -10,18 +10,22 @@ interface MessagePostData {
   role: 'PRO' | 'CON' | 'MODERATOR' | 'SYSTEM';
 }
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+// GET handler - Fetch all messages for a debate
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
     const messages = await prisma.message.findMany({
       where: { debateId: params.id },
-      include: { 
+      include: {
         sender: {
           select: {
             id: true,
             clerkId: true,
             username: true,
           }
-        } 
+        }
       },
       orderBy: { createdAt: 'asc' }
     });
@@ -36,7 +40,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     console.error('Error fetching messages:', error);
     return NextResponse.json(
       { error: 'Failed to fetch messages', details: error instanceof Error ? error.message : String(error) },
-      { 
+      {
         status: 500,
         headers: {
           'Access-Control-Allow-Origin': '*',
@@ -47,14 +51,18 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+// POST handler - Create a new message
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
     const { userId, content, role } = await request.json() as MessagePostData;
     
     if (!userId || !content || !role) {
       return NextResponse.json(
         { error: 'Missing required fields' },
-        { 
+        {
           status: 400,
           headers: {
             'Access-Control-Allow-Origin': '*',
@@ -64,7 +72,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       );
     }
 
-    const user = await prisma.user.findUnique({ 
+    const user = await prisma.user.findUnique({
       where: { clerkId: userId },
       select: {
         id: true,
@@ -75,8 +83,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     if (!user) {
       return NextResponse.json(
-        { error: 'User not found' }, 
-        { 
+        { error: 'User not found' },
+        {
           status: 404,
           headers: {
             'Access-Control-Allow-Origin': '*',
@@ -93,14 +101,14 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         debateId: params.id,
         senderId: user.id,
       },
-      include: { 
+      include: {
         sender: {
           select: {
             id: true,
             clerkId: true,
             username: true
           }
-        } 
+        }
       }
     });
 
@@ -114,7 +122,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     console.error('Error creating message:', error);
     return NextResponse.json(
       { error: 'Failed to create message', details: error instanceof Error ? error.message : String(error) },
-      { 
+      {
         status: 500,
         headers: {
           'Access-Control-Allow-Origin': '*',
@@ -125,6 +133,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   }
 }
 
+// OPTIONS handler - CORS preflight
 export async function OPTIONS() {
   return new NextResponse(null, {
     headers: {
@@ -134,6 +143,3 @@ export async function OPTIONS() {
     }
   });
 }
-
-// Explicitly declare the route exports
-export { GET, POST, OPTIONS };
