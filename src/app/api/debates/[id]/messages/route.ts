@@ -1,71 +1,137 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+export const dynamic = 'force-dynamic';
+
+interface MessagePostData {
+  userId: string;
+  content: string;
+  role: 'PRO' | 'CON' | 'MODERATOR' | 'SYSTEM';
+}
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const messages = await prisma.message.findMany({
       where: { debateId: params.id },
-      include: { sender: true },
+      include: { 
+        sender: {
+          select: {
+            id: true,
+            clerkId: true,
+            username: true,
+            // Remove imageUrl if it doesn't exist in your Prisma model
+            // If you need profile images, ensure your User model has this field
+            // imageUrl: true  
+          }
+        } 
+      },
       orderBy: { createdAt: 'asc' }
     });
 
-    return NextResponse.json(messages);
+    return NextResponse.json(messages, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      }
+    });
   } catch (error) {
     console.error('Error fetching messages:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch messages', details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      { error: 'Failed to fetch messages', details: error instanceof Error ? error.message : String(error) },
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json',
+        }
+      }
     );
   }
 }
 
 export async function POST(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { userId, content, role } = await request.json();
+    const { userId, content, role } = await request.json() as MessagePostData;
     
     if (!userId || !content || !role) {
       return NextResponse.json(
         { error: 'Missing required fields' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json',
+          }
+        }
       );
     }
 
-    // Look up the user by clerkId
-    const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+    const user = await prisma.user.findUnique({ 
+      where: { clerkId: userId },
+      select: {
+        id: true,
+        clerkId: true,
+        username: true
+        // Remove imageUrl if not in your model
+      }
+    });
+
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    try {
-      const newMessage = await prisma.message.create({
-        data: {
-          content,
-          role,
-          debateId: params.id,
-          senderId: user.id, // Use the internal CUID
-        },
-        include: { sender: true }
-      });
-
-      return NextResponse.json(newMessage);
-    } catch (dbError) {
-      console.error('DB error creating message:', dbError);
       return NextResponse.json(
-        { error: 'Failed to create message', details: dbError instanceof Error ? dbError.message : dbError },
-        { status: 500 }
+        { error: 'User not found' }, 
+        { 
+          status: 404,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json',
+          }
+        }
       );
     }
+
+    const newMessage = await prisma.message.create({
+      data: {
+        content,
+        role,
+        debateId: params.id,
+        senderId: user.id,
+      },
+      include: { 
+        sender: {
+          select: {
+            id: true,
+            clerkId: true,
+            username: true
+            // Remove imageUrl if not in your model
+          }
+        } 
+      }
+    });
+
+    return NextResponse.json(newMessage, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      }
+    });
   } catch (error) {
     console.error('Error creating message:', error);
     return NextResponse.json(
-      { error: 'Failed to create message', details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      { error: 'Failed to create message', details: error instanceof Error ? error.message : String(error) },
+      { 
+        status: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json',
+        }
+      }
     );
   }
 }
