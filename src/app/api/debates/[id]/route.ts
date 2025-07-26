@@ -43,7 +43,7 @@ const DEFAULT_SCORES: Score = {
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse> {
   try {
     const debate = await prisma.debate.findUnique({
       where: { id: params.id },
@@ -75,7 +75,7 @@ export async function GET(
 export async function POST(
   request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse> {
   let userId: string | undefined;
   let action: string | undefined;
   
@@ -181,7 +181,6 @@ export async function POST(
           .join("\n");
         const debateTopic = updatedDebate.topic;
         
-        // Initialize with default scores
         const aiScores: AIScores = {
           pro: { ...DEFAULT_SCORES },
           con: { ...DEFAULT_SCORES }
@@ -245,10 +244,8 @@ export async function POST(
           }
         } catch (error) {
           console.error("Error generating AI scores:", error);
-          // Keep the default scores if AI fails
         }
         
-        // Save scores
         if (!scoredUserIds.includes(updatedDebate.proUser.id)) {
           await prisma.score.create({
             data: {
@@ -285,7 +282,7 @@ export async function POST(
 export async function DELETE(
   request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse> {
   try {
     const { userId } = await request.json() as { userId?: string };
 
@@ -313,7 +310,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     }
 
-    if (debate.proUserId !== user.id) {
+    if (debate.creatorId !== user.id) {
       return NextResponse.json({ error: "Only the debate creator can delete this debate" }, { status: 403 });
     }
 
@@ -345,7 +342,7 @@ export async function DELETE(
 export async function PATCH(
   request: Request,
   { params }: { params: { id: string } }
-) {
+): Promise<NextResponse> {
   let userId: string | undefined;
   let action: string | undefined;
   
@@ -378,7 +375,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     }
 
-    if (debate.proUserId !== user.id) {
+    if (debate.creatorId !== user.id) {
       return NextResponse.json({ error: "Only the debate creator can remove participants" }, { status: 403 });
     }
 
@@ -420,7 +417,7 @@ export async function PATCH(
   }
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(): Promise<NextResponse> {
   return new NextResponse(null, {
     headers: {
       'Access-Control-Allow-Origin': '*',
