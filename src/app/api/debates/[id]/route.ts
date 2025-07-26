@@ -13,10 +13,11 @@ interface AIScores {
   pro?: ScoreData;
   con?: ScoreData;
 }
+
 export async function GET(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
-)  {
+) {
 try {
     const { id } = params;
 
@@ -47,9 +48,12 @@ try {
   }
 }
 
-export async function POST(request: Request, context: { params: { id: string } }) {
+export async function POST(
+  request: Request, 
+  { params }: { params: { id: string } }
+) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     const { userId, action, joinCode } = await request.json();
 
     if (!userId) {
@@ -254,9 +258,12 @@ Transcript:\n${transcript}`;
   }
 }
 
-export async function DELETE(request: Request, context: { params: { id: string } }) {
+export async function DELETE(
+  request: Request, 
+  { params }: { params: { id: string } }
+) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     const { userId } = await request.json();
 
     if (!userId) {
@@ -298,9 +305,12 @@ export async function DELETE(request: Request, context: { params: { id: string }
   }
 }
 
-export async function PATCH(request: Request, context: { params: { id: string } }) {
+export async function PATCH(
+  request: Request, 
+  { params }: { params: { id: string } }
+) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     const { userId, action } = await request.json();
 
     if (!userId) {
