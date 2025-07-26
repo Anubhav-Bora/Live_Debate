@@ -14,16 +14,9 @@ interface AIScores {
   con?: ScoreData;
 }
 
-// Define the context type
-interface Context {
-  params: {
-    id: string;
-  };
-}
-
-export async function GET(_: Request, context: Context) {
+export async function GET(_: Request, { params }: { params: { id: string } }) {
   try {
-    const { id } = context.params;
+    const { id } = params;
 
     const debate = await prisma.debate.findUnique({
       where: { id },
@@ -52,9 +45,9 @@ export async function GET(_: Request, context: Context) {
   }
 }
 
-export async function POST(request: Request, context: Context) {
+export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     const { userId, action, joinCode } = await request.json();
 
     if (!userId) {
@@ -259,9 +252,9 @@ export async function POST(request: Request, context: Context) {
   }
 }
 
-export async function DELETE(request: Request, context: Context) {
+export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     const { userId } = await request.json();
 
     if (!userId) {
@@ -303,9 +296,9 @@ export async function DELETE(request: Request, context: Context) {
   }
 }
 
-export async function PATCH(request: Request, context: Context) {
+export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
-    const { id } = context.params;
+    const { id } = params;
     const { userId, action } = await request.json();
 
     if (!userId) {
