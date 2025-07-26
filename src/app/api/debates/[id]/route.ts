@@ -41,7 +41,7 @@ const DEFAULT_SCORES: Score = {
   tone: 8
 };
 
-// ✅ GET Handler
+// GET Handler
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -77,7 +77,7 @@ export async function GET(
   }
 }
 
-// ✅ POST Handler
+// POST Handler
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -172,15 +172,17 @@ export async function POST(
         });
         const scoredUserIds = existingScores.map(s => s.userId);
 
-        const transcript = updatedDebate.messages.map((msg: Message) => `${msg.sender.username} (${msg.role}): ${msg.content}`).join("\n");
-        const prompt = `Analyze this debate transcript...`;
-
+        const messages = updatedDebate.messages;
+        const debateTopic = updatedDebate.topic;
+        
         const aiScores: AIScores = {
           pro: { ...DEFAULT_SCORES },
           con: { ...DEFAULT_SCORES }
         };
 
         try {
+          const prompt = `Analyze this debate about "${debateTopic}" and score both participants on logic, clarity, persuasiveness, and tone (1-10). Return only 8 numbers separated by commas: proLogic,proClarity,proPersuasiveness,proTone,conLogic,conClarity,conPersuasiveness,conTone`;
+          
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -197,21 +199,45 @@ export async function POST(
 
           const data: OpenRouterResponse = await response.json();
           const analysis = data.choices?.[0]?.message?.content;
-
-          const allScores = Array.from(analysis?.matchAll(/(\d{1,2})/g) ?? []).map(m => parseInt(m[1]));
-          if (allScores.length >= 8) {
-            aiScores.pro = { logic: allScores[0], clarity: allScores[1], persuasiveness: allScores[2], tone: allScores[3] };
-            aiScores.con = { logic: allScores[4], clarity: allScores[5], persuasiveness: allScores[6], tone: allScores[7] };
+          
+          if (analysis) {
+            const scores = analysis.match(/\d+/g)?.map(Number);
+            if (scores && scores.length >= 8) {
+              aiScores.pro = {
+                logic: scores[0],
+                clarity: scores[1],
+                persuasiveness: scores[2],
+                tone: scores[3]
+              };
+              aiScores.con = {
+                logic: scores[4],
+                clarity: scores[5],
+                persuasiveness: scores[6],
+                tone: scores[7]
+              };
+            }
           }
         } catch (error) {
           console.error("Error generating AI scores:", error);
         }
 
         if (!scoredUserIds.includes(updatedDebate.proUser.id)) {
-          await prisma.score.create({ data: { ...aiScores.pro, userId: updatedDebate.proUser.id, debateId: updatedDebate.id } });
+          await prisma.score.create({ 
+            data: { 
+              ...aiScores.pro, 
+              userId: updatedDebate.proUser.id, 
+              debateId: updatedDebate.id 
+            } 
+          });
         }
         if (!scoredUserIds.includes(updatedDebate.conUser.id)) {
-          await prisma.score.create({ data: { ...aiScores.con, userId: updatedDebate.conUser.id, debateId: updatedDebate.id } });
+          await prisma.score.create({ 
+            data: { 
+              ...aiScores.con, 
+              userId: updatedDebate.conUser.id, 
+              debateId: updatedDebate.id 
+            } 
+          });
         }
       }
     } else {
@@ -220,10 +246,11 @@ export async function POST(
 
     return NextResponse.json(updatedDebate);
   } catch (error) {
-    console.error("Error updating debate:", { error, userId, debateId: params.id, action });
+    console.error("Error updating debate:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
+
 // OPTIONS Handler
 export async function OPTIONS(): Promise<NextResponse> {
   return new NextResponse(null, {
