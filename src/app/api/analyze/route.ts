@@ -1,9 +1,4 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 export async function POST(req: Request) {
   try {
@@ -34,14 +29,21 @@ export async function POST(req: Request) {
     Also provide 3 specific suggestions for improvement for each participant.
     `;
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: 1500,
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "mistralai/mistral-7b-instruct", // Free model
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 1500
+      })
     });
 
-    const analysis = response.choices[0]?.message?.content;
+    const data = await response.json();
+    const analysis = data.choices[0]?.message?.content;
 
     if (!analysis) {
       throw new Error("No analysis generated");
