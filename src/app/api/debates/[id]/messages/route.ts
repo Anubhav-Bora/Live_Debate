@@ -3,11 +3,13 @@ import { NextResponse } from "next/server";
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+    
     const messages = await prisma.message.findMany({
-      where: { debateId: params.id },
+      where: { debateId: id },
       include: { sender: true },
       orderBy: { createdAt: 'asc' }
     });
@@ -24,9 +26,10 @@ export async function GET(
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { userId, content, role } = await request.json();
     
     if (!userId || !content || !role) {
@@ -47,7 +50,7 @@ export async function POST(
         data: {
           content,
           role,
-          debateId: params.id,
+          debateId: id,
           senderId: user.id, // Use the internal CUID
         },
         include: { sender: true }
