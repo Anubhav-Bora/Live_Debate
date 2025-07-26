@@ -3,10 +3,12 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(
   req: Request,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
+  const { userId } = await params;
+  
   const user = await prisma.user.findUnique({
-    where: { id: params.userId },
+    where: { id: userId },
     include: {
       scores: {
         include: { debate: { select: { id: true, topic: true } } },
