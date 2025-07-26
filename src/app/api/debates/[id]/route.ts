@@ -59,7 +59,10 @@ export async function GET(
     });
 
     if (!debate) {
-      return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Debate not found" },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json(debate);
