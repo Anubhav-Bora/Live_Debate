@@ -61,8 +61,8 @@ export async function POST(req: Request) {
     }
 
     // Input validation
-    if (!topic || typeof topic !== 'string' || topic.trim().length < 5 || topic.trim().length > 100) {
-      return NextResponse.json({ error: "Debate topic must be between 5 and 100 characters." }, { status: 400 });
+    if (!topic || typeof topic !== 'string' || topic.trim().length < 1) {
+      return NextResponse.json({ error: "Debate topic is required." }, { status: 400 });
     }
 
     const user = await prisma.user.findUnique({ 
@@ -73,18 +73,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Check for duplicate debates by the same user with the same topic in the last 10 minutes
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-    const duplicate = await prisma.debate.findFirst({
-      where: {
-        topic: topic.trim(),
-        creatorId: user.id,
-        createdAt: { gte: tenMinutesAgo }
-      }
-    });
-    if (duplicate) {
-      return NextResponse.json({ error: "You have already created a debate with this topic recently. Please wait before creating another." }, { status: 400 });
-    }
+    // Removed duplicate topic restriction - users can now create debates with same topics
 
     const newDebate = await prisma.debate.create({
       data: {

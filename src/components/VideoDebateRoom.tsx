@@ -70,6 +70,34 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
   const lastRemoteStream = useRef<MediaStream | null>(null);
   const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
+  const streamRef = useRef<MediaStream | null>(null);
+  const peerRef = useRef<PeerInstance | null>(null);
+
+  // Keep refs updated
+  useEffect(() => {
+    streamRef.current = stream;
+  }, [stream]);
+
+  useEffect(() => {
+    peerRef.current = peer;
+  }, [peer]);
+
+  // AUTO STOP CAMERA on component unmount ONLY
+  useEffect(() => {
+    return () => {
+      console.log("[VideoDebateRoom] Component unmounting - stopping camera...");
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => {
+          track.stop();
+          console.log("[VideoDebateRoom] Stopped track:", track.kind);
+        });
+      }
+      if (peerRef.current) {
+        console.log("[VideoDebateRoom] Destroying peer connection...");
+        peerRef.current.destroy();
+      }
+    };
+  }, []); // No dependencies - only runs on unmount
 
   // Get available video devices
   useEffect(() => {
@@ -86,15 +114,17 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
       .catch(err => console.error("Error enumerating devices:", err));
   }, []);
 
-  // Get user media with selected device
+  // Get user media with selected device - AUTO START CAMERA
   useEffect(() => {
     if (!selectedDeviceId) return;
 
+    console.log("[VideoDebateRoom] Auto-starting camera...");
     navigator.mediaDevices.getUserMedia({
       video: { deviceId: { exact: selectedDeviceId } },
       audio: true
     })
       .then((mediaStream) => {
+        console.log("[VideoDebateRoom] Camera started successfully");
         setStream(mediaStream);
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = mediaStream;

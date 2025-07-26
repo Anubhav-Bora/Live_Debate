@@ -30,7 +30,8 @@ export default function CreateDebatePage() {
   const { user } = useUser()
   const router = useRouter()
   const [topic, setTopic] = useState("")
-  const [duration, setDuration] = useState(180)
+  const [minutes, setMinutes] = useState<number | undefined>(undefined)
+  const [seconds, setSeconds] = useState<number | undefined>(undefined)
   const [isPublic, setIsPublic] = useState(true)
   const [loading, setLoading] = useState(false)
   const [createdDebate, setCreatedDebate] = useState<Debate | null>(null)
@@ -46,6 +47,17 @@ export default function CreateDebatePage() {
       return
     }
 
+    const minutesNum = minutes || 0
+    const secondsNum = seconds || 0
+    const totalSeconds = minutesNum * 60 + secondsNum
+    
+    if (totalSeconds < 60) {
+      toast.error("Debate duration must be at least 1 minute")
+      return
+    }
+
+    // No maximum duration limit
+
     setLoading(true)
     try {
       const res = await fetch("/api/debates", {
@@ -55,7 +67,7 @@ export default function CreateDebatePage() {
         },
         body: JSON.stringify({
           topic,
-          duration,
+          duration: totalSeconds,
           isPublic,
         }),
       })
@@ -228,26 +240,69 @@ export default function CreateDebatePage() {
                     required
                   />
                   <p className="text-sm text-gray-400">
-                    Choose a compelling topic that allows for strong arguments on both sides.
+                    Enter any debate topic of any length. You can now create multiple debates with the same topic.
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="duration" className="text-white font-semibold flex items-center gap-2">
+                  <Label className="text-white font-semibold flex items-center gap-2">
                     <Clock className="w-4 h-4" />
-                    Duration (seconds)
+                    Duration
                   </Label>
-                  <Input
-                    id="duration"
-                    type="number"
-                    value={duration}
-                    onChange={(e) => setDuration(Number(e.target.value))}
-                    min="60"
-                    max="1800"
-                    className="bg-white/5 border-white/20 text-white"
-                  />
+                  <div className="flex gap-3 items-center">
+                    <div className="flex-1">
+                      <Label htmlFor="minutes" className="text-sm text-gray-300 mb-1 block">
+                        Minutes
+                      </Label>
+                      <Input
+                        id="minutes"
+                        type="number"
+                        value={minutes || ""}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          if (value === "") {
+                            setMinutes(undefined)
+                          } else {
+                            const num = parseInt(value)
+                            if (!isNaN(num) && num >= 0) {
+                              setMinutes(num)
+                            }
+                          }
+                        }}
+                        min="0"
+                        placeholder="0"
+                        className="bg-white/5 border-white/20 text-white"
+                      />
+                    </div>
+                    <div className="text-white text-xl font-bold mt-6">:</div>
+                    <div className="flex-1">
+                      <Label htmlFor="seconds" className="text-sm text-gray-300 mb-1 block">
+                        Seconds
+                      </Label>
+                      <Input
+                        id="seconds"
+                        type="number"
+                        value={seconds || ""}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          if (value === "") {
+                            setSeconds(undefined)
+                          } else {
+                            const num = parseInt(value)
+                            if (!isNaN(num) && num >= 0 && num <= 59) {
+                              setSeconds(num)
+                            }
+                          }
+                        }}
+                        min="0"
+                        max="59"
+                        placeholder="0"
+                        className="bg-white/5 border-white/20 text-white"
+                      />
+                    </div>
+                  </div>
                   <p className="text-sm text-gray-400">
-                    Set the debate duration (60-1800 seconds). Recommended: 180 seconds for focused discussions.
+                    Set the debate duration. Minimum: 1 minute required. No maximum limit. Total: {(minutes || 0) * 60 + (seconds || 0)} seconds.
                   </p>
                 </div>
 
@@ -287,7 +342,10 @@ export default function CreateDebatePage() {
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Cancel
               </NeonButton>
-              <NeonButton onClick={handleCreate} disabled={loading || !topic.trim()}>
+              <NeonButton 
+                onClick={handleCreate} 
+                disabled={loading || !topic.trim() || ((minutes || 0) * 60 + (seconds || 0)) < 60}
+              >
                 {loading ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>

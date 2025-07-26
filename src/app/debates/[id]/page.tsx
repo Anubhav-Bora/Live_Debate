@@ -390,12 +390,27 @@ export default function DebatePage() {
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 leading-tight">{debate.topic}</h1>
             <div className="flex items-center gap-4">
-              <Badge className={`bg-gradient-to-r ${getStatusColor(debateStatus)} text-white px-3 py-1`}>
-                {getStatusIcon(debateStatus)}
-                <span className="ml-2 capitalize">{debateStatus.replace("-", " ")}</span>
-              </Badge>
-              <span className="text-gray-400 text-sm">ID: {id}</span>
-            </div>
+            <Badge className={`bg-gradient-to-r ${getStatusColor(debateStatus)} text-white px-3 py-1`}>
+            {getStatusIcon(debateStatus)}
+            <span className="ml-2 capitalize">{debateStatus.replace("-", " ")}</span>
+            </Badge>
+            <div className="flex items-center gap-2">
+                <span className="text-gray-400 text-sm">Debate ID:</span>
+                  <code className="bg-gray-800/50 px-2 py-1 rounded text-white text-sm font-mono border border-gray-600">
+                    {id}
+                  </code>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(id as string);
+                      // You can add a toast notification here if needed
+                    }}
+                    className="text-gray-400 hover:text-white transition-colors text-xs"
+                    title="Copy Debate ID"
+                  >
+                    📋
+                  </button>
+                </div>
+              </div>
           </div>
           <div className="flex gap-3">
             <NeonButton variant="outline" onClick={() => router.push("/debates")}>
@@ -528,6 +543,17 @@ export default function DebatePage() {
                 <CardDescription className="text-gray-300">Participate as Con or observe as a Viewer</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                    <span className="text-blue-300 font-medium text-sm">How to Join</span>
+                  </div>
+                  <div className="text-gray-300 text-sm space-y-1">
+                    <div>• <strong>Debate ID</strong> (above) = View this debate as spectator</div>
+                    <div>• <strong>Con Code</strong> (from creator) = Join as Con participant</div>
+                  </div>
+                </div>
+                
                 {!debate.conUser && (
                   <div>
                     <Label className="text-white font-semibold mb-2 block">Join as Con Participant</Label>
@@ -545,7 +571,7 @@ export default function DebatePage() {
                         Join as Con
                       </NeonButton>
                     </div>
-                    <div className="text-xs text-gray-400 mt-2">Enter the exact join code (case-sensitive)</div>
+                    <div className="text-xs text-gray-400 mt-2">Enter the exact join code provided by the debate creator</div>
                   </div>
                 )}
                 <div>
@@ -554,6 +580,7 @@ export default function DebatePage() {
                     <Users className="w-4 h-4 mr-2" />
                     Join as Viewer
                   </NeonButton>
+                  <div className="text-xs text-gray-400 mt-2">You&apos;re currently viewing with the Debate ID</div>
                 </div>
               </CardContent>
             </GlowCard>
