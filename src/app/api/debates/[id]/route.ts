@@ -40,11 +40,18 @@ const DEFAULT_SCORES: Score = {
   tone: 8
 };
 
-export async function GET(
+export const GET = async (
   request: Request,
   { params }: { params: { id: string } }
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   try {
+    if (!params.id) {
+      return NextResponse.json(
+        { error: "Debate ID is required" },
+        { status: 400 }
+      );
+    }
+
     const debate = await prisma.debate.findUnique({
       where: { id: params.id },
       include: {
@@ -73,12 +80,12 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+};
 
-export async function POST(
+export const POST = async (
   request: Request,
   { params }: { params: { id: string } }
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let userId: string | undefined;
   let action: string | undefined;
   
@@ -90,6 +97,13 @@ export async function POST(
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!params.id) {
+      return NextResponse.json(
+        { error: "Debate ID is required" },
+        { status: 400 }
+      );
     }
 
     const user = await prisma.user.findUnique({ 
@@ -280,17 +294,24 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+};
 
-export async function DELETE(
+export const DELETE = async (
   request: Request,
   { params }: { params: { id: string } }
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   try {
     const { userId } = await request.json() as { userId?: string };
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!params.id) {
+      return NextResponse.json(
+        { error: "Debate ID is required" },
+        { status: 400 }
+      );
     }
 
     const user = await prisma.user.findUnique({ 
@@ -340,12 +361,12 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+};
 
-export async function PATCH(
+export const PATCH = async (
   request: Request,
   { params }: { params: { id: string } }
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let userId: string | undefined;
   let action: string | undefined;
   
@@ -356,6 +377,13 @@ export async function PATCH(
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    if (!params.id) {
+      return NextResponse.json(
+        { error: "Debate ID is required" },
+        { status: 400 }
+      );
     }
 
     const user = await prisma.user.findUnique({ 
@@ -418,9 +446,9 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+};
 
-export async function OPTIONS(): Promise<NextResponse> {
+export const OPTIONS = async (): Promise<NextResponse> => {
   return new NextResponse(null, {
     headers: {
       'Access-Control-Allow-Origin': '*',
@@ -428,4 +456,4 @@ export async function OPTIONS(): Promise<NextResponse> {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     }
   });
-}
+};
