@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(req: Request) {
   try {
-    const { debateId, userId, role, message } = await req.json();
+    const { debateId, userId } = await req.json();
     
     const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
     const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     }
 
     // Prepare messages for AI
-    const messages = debate.messages.map(msg => ({
+    const aiMessages = debate.messages.map(msg => ({
       role: msg.role === "judge" ? "assistant" : msg.role,
       content: msg.content
     }));
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     Provide constructive feedback on the arguments, suggest improvements, and score the performance 
     (1-10) on logic, clarity, persuasiveness, and tone. Be specific and helpful.`;
 
-    messages.unshift({
+    aiMessages.unshift({
       role: "system",
       content: systemPrompt
     });
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         model: "anthropic/claude-3-haiku", // Free model
-        messages,
+        messages: aiMessages,
         max_tokens: 1000
       })
     });

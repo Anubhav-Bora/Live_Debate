@@ -1,5 +1,4 @@
 "use client"
-
 import { useUser } from "@clerk/nextjs"
 import { useParams, useRouter } from "next/navigation"
 import { useState, useEffect, useRef } from "react"
@@ -114,37 +113,32 @@ export default function DebatePage() {
           setDebate(null)
           toast.error(`Failed to fetch debate: ${res.status}`)
         }
-      } catch (err) {
+      } catch (error) {
         setDebate(null)
         toast.error("Error fetching debate")
       } finally {
         setLoading(false)
       }
     }
-
     fetchDebate()
   }, [id, user?.id])
 
   useEffect(() => {
     if (!socket) return
-    const onStarted = ({ startTime, duration }: { startTime: string; duration: number }) => {
+    const onStarted = ({ duration }: { duration: number }) => {
       setDebateStatus("in-progress")
       setTimer(duration)
     }
-
     const onEnded = () => {
       setDebateStatus("completed")
       setTimer(0)
     }
-
     const onFeedback = (feedback: AIFeedback) => {
       setAiFeedback(feedback)
     }
-
     socket.on("debate_started", onStarted)
     socket.on("debate_ended", onEnded)
     socket.on("debate_feedback", onFeedback)
-
     return () => {
       socket.off("debate_started", onStarted)
       socket.off("debate_ended", onEnded)
@@ -152,7 +146,6 @@ export default function DebatePage() {
     }
   }, [socket])
 
-  // Fetch messages
   useEffect(() => {
     if (!id) return
     const fetchMessages = async () => {
@@ -161,17 +154,15 @@ export default function DebatePage() {
         if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
         const data = await res.json()
         setMessages(data)
-      } catch (err) {
-        console.log("Error fetching messages:", err)
+      } catch (error) {
+        console.log("Error fetching messages:", error)
       }
     }
-
     fetchMessages()
     const interval = setInterval(fetchMessages, 5000)
     return () => clearInterval(interval)
   }, [id])
 
-  // Timer logic
   useEffect(() => {
     if (debateStatus !== "in-progress" || !timer) return
     setTimeLeft(timer)
@@ -187,7 +178,6 @@ export default function DebatePage() {
         return prev - 1
       })
     }, 1000)
-
     return () => {
       if (timerInterval.current) clearInterval(timerInterval.current)
     }
@@ -222,7 +212,7 @@ export default function DebatePage() {
         }
         toast.error(errorMsg)
       }
-    } catch (err) {
+    } catch (error) {
       toast.error("An error occurred while joining")
     }
   }
@@ -250,7 +240,7 @@ export default function DebatePage() {
       })
       if (!res.ok) throw new Error(await res.text())
       setNewMessage("")
-    } catch (err) {
+    } catch (error) {
       toast.error("Failed to send message")
     } finally {
       setIsSending(false)
@@ -291,16 +281,16 @@ export default function DebatePage() {
 
   const handleDeleteDebate = async () => {
     if (!user?.id || !id) return
-    
+
     if (debate?.proUser?.clerkId !== user.id) {
       toast.error("Only the debate creator can delete this debate")
       return
     }
-    
+
     if (!confirm("Are you sure you want to delete this debate? This action cannot be undone.")) {
       return
     }
-    
+
     try {
       const res = await fetch(`/api/debates/${id}`, {
         method: "DELETE",
@@ -311,7 +301,7 @@ export default function DebatePage() {
           userId: user.id,
         }),
       })
-      
+
       if (res.ok) {
         toast.success("Debate deleted successfully")
         router.push("/debates")
@@ -319,12 +309,12 @@ export default function DebatePage() {
         const errorData = await res.json()
         toast.error(errorData.error || "Failed to delete debate")
       }
-    } catch (err) {
+    } catch (error) {
       toast.error("An error occurred while deleting the debate")
     }
   }
 
-  const handleRemoveParticipant = async (participantType: "con") => {
+  const handleRemoveParticipant = async () => {
     if (!user?.id || !id || !debate) return;
     if (debate.proUser?.clerkId !== user.id) {
       toast.error("Only the debate creator can remove participants");
@@ -345,7 +335,7 @@ export default function DebatePage() {
         const errorData = await res.json();
         toast.error(errorData.error || "Failed to remove participant");
       }
-    } catch (err) {
+    } catch (error) {
       toast.error("An error occurred while removing the participant");
     }
   };
@@ -373,7 +363,7 @@ export default function DebatePage() {
         <div className="relative z-10 container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
           <GlowCard className="text-center">
             <div className="text-red-400 text-xl font-bold mb-4">Debate Not Found</div>
-            <p className="text-gray-300 mb-6">The debate you're looking for doesn't exist or failed to load.</p>
+            <p className="text-gray-300 mb-6">The debate you&apos;re looking for doesn&apos;t exist or failed to load.</p>
             <Link href="/debates">
               <NeonButton>
                 <ArrowLeft className="w-4 h-4 mr-2" />
@@ -387,11 +377,9 @@ export default function DebatePage() {
   }
 
   const isDev = process.env.NODE_ENV !== "production"
-
   return (
     <div className="min-h-screen relative overflow-hidden">
       <AnimatedBackground />
-
       <div className="relative z-10 container mx-auto px-4 py-8">
         {/* Header */}
         <motion.div
@@ -415,8 +403,8 @@ export default function DebatePage() {
               Back to Arena
             </NeonButton>
             {debate.proUser?.clerkId === user?.id && (
-              <NeonButton 
-                variant="outline" 
+              <NeonButton
+                variant="outline"
                 onClick={handleDeleteDebate}
                 className="bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30"
               >
@@ -426,7 +414,6 @@ export default function DebatePage() {
             )}
           </div>
         </motion.div>
-
         {/* Debug Info for Development */}
         {isDev && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6">
@@ -442,7 +429,6 @@ export default function DebatePage() {
             </GlowCard>
           </motion.div>
         )}
-
         {/* Participants Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -472,7 +458,6 @@ export default function DebatePage() {
               <div className="text-gray-400 italic">Waiting for Pro participant...</div>
             )}
           </GlowCard>
-
           {/* Con Participant */}
           <GlowCard glowColor="rgba(239, 68, 68, 0.3)" className="relative group">
             <div className="flex items-center justify-between mb-4">
@@ -492,7 +477,7 @@ export default function DebatePage() {
                 </div>
                 {debate.proUser?.clerkId === user?.id && (
                   <button
-                    onClick={() => handleRemoveParticipant("con")}
+                    onClick={handleRemoveParticipant}
                     className="p-1 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 hover:bg-red-500/30 transition-all opacity-0 group-hover:opacity-100"
                     title="Remove Con participant"
                   >
@@ -505,7 +490,6 @@ export default function DebatePage() {
             )}
           </GlowCard>
         </motion.div>
-
         {/* Timer Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -527,7 +511,6 @@ export default function DebatePage() {
             )}
           </GlowCard>
         </motion.div>
-
         {/* Join Section for Viewers */}
         {role === "viewer" && (
           <motion.div
@@ -576,7 +559,6 @@ export default function DebatePage() {
             </GlowCard>
           </motion.div>
         )}
-
         {/* Video Debate Room */}
         {id && (role === "pro" || role === "con") && user?.id && (
           <motion.div
@@ -593,11 +575,9 @@ export default function DebatePage() {
                 </NeonButton>
               </div>
             )}
-
             <GlowCard className="p-0 overflow-hidden">
               <VideoDebateRoom debateId={id} userId={user.id} role={role} />
             </GlowCard>
-
             {/* Chat Section */}
             <GlowCard className="mt-6">
               <div className="flex items-center gap-2 p-4 border-b border-white/10">
@@ -666,7 +646,6 @@ export default function DebatePage() {
                 </NeonButton>
               </div>
             </GlowCard>
-
             {/* AI Feedback after debate ends */}
             {debateStatus === "completed" && aiFeedback && (
               <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
@@ -675,7 +654,6 @@ export default function DebatePage() {
                     <Brain className="w-6 h-6 text-purple-400" />
                     <h3 className="text-2xl font-bold text-white">AI Performance Analysis</h3>
                   </div>
-
                   <div className="grid md:grid-cols-2 gap-6">
                     {/* Pro Feedback */}
                     <div className="space-y-4">
@@ -720,7 +698,6 @@ export default function DebatePage() {
                         </div>
                       </div>
                     </div>
-
                     {/* Con Feedback */}
                     <div className="space-y-4">
                       <h4 className="text-xl font-semibold text-red-400 flex items-center gap-2">
@@ -770,7 +747,6 @@ export default function DebatePage() {
             )}
           </motion.div>
         )}
-
         {/* Viewer Message */}
         {id && role === "viewer" && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
