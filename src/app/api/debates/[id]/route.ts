@@ -14,9 +14,9 @@ interface AIScores {
   con?: ScoreData;
 }
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
+export async function GET(_: Request, context: { params: { id: string } }) {
   try {
-    const { id } = params;
+    const { id } = context.params;
 
     const debate = await prisma.debate.findUnique({
       where: { id },
@@ -45,9 +45,9 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
   }
 }
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, context: { params: { id: string } }) {
   try {
-    const { id } = params;
+    const { id } = context.params;
     const { userId, action, joinCode } = await request.json();
 
     if (!userId) {
@@ -152,12 +152,12 @@ export async function POST(request: Request, { params }: { params: { id: string 
           .join("\n");
 
         const prompt = `Analyze this debate transcript and score both participants (pro and con) on four criteria: logic, clarity, persuasiveness, and tone.
-        Provide only the scores as numbers in this exact format:
-        Pro: [logic], [clarity], [persuasiveness], [tone]
-        Con: [logic], [clarity], [persuasiveness], [tone]
+Provide only the scores as numbers in this exact format:
+Pro: [logic], [clarity], [persuasiveness], [tone]
+Con: [logic], [clarity], [persuasiveness], [tone]
 
-        Debate Topic: ${updatedDebate.topic}
-        Transcript:\n${transcript}`;
+Debate Topic: ${updatedDebate.topic}
+Transcript:\n${transcript}`;
 
         let aiScores: AIScores | null = null;
 
@@ -252,9 +252,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, context: { params: { id: string } }) {
   try {
-    const { id } = params;
+    const { id } = context.params;
     const { userId } = await request.json();
 
     if (!userId) {
@@ -296,9 +296,9 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   }
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, context: { params: { id: string } }) {
   try {
-    const { id } = params;
+    const { id } = context.params;
     const { userId, action } = await request.json();
 
     if (!userId) {
