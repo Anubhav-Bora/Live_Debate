@@ -404,7 +404,7 @@ export default function DebatePage() {
                       navigator.clipboard.writeText(id as string);
                       // You can add a toast notification here if needed
                     }}
-                    className="text-gray-400 hover:text-white transition-colors text-xs"
+                    className="text-gray-400 text-xs"
                     title="Copy Debate ID"
                   >
                     📋
@@ -421,7 +421,7 @@ export default function DebatePage() {
               <NeonButton
                 variant="outline"
                 onClick={handleDeleteDebate}
-                className="bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30"
+                className="bg-red-500/20 border-red-500/30 text-red-300"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Delete Debate
@@ -474,7 +474,7 @@ export default function DebatePage() {
             )}
           </GlowCard>
           {/* Con Participant */}
-          <GlowCard glowColor="rgba(239, 68, 68, 0.3)" className="relative group">
+          <GlowCard glowColor="rgba(239, 68, 68, 0.3)" className="relative">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-red-400">Con Position</h3>
               <Zap className="w-6 h-6 text-red-400" />
@@ -493,7 +493,7 @@ export default function DebatePage() {
                 {debate.proUser?.clerkId === user?.id && (
                   <button
                     onClick={handleRemoveParticipant}
-                    className="p-1 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 hover:bg-red-500/30 transition-all opacity-0 group-hover:opacity-100"
+                    className="p-1 rounded-full bg-red-500/20 border border-red-500/30 text-red-300"
                     title="Remove Con participant"
                   >
                     <X className="w-4 h-4" />
