@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-// Type definitions
 interface Score {
   logic: number;
   clarity: number;
@@ -35,13 +34,13 @@ const DEFAULT_SCORES: Score = {
   tone: 8
 };
 
-// GET Handler
+// GET Handler with proper typing
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ): Promise<NextResponse> {
   try {
-    const id = params.id;
+    const { id } = context.params;
 
     if (!id) {
       return NextResponse.json({ error: "Debate ID is required" }, { status: 400 });
@@ -74,16 +73,12 @@ export async function GET(
 // POST Handler
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ): Promise<NextResponse> {
-  let userId: string | undefined;
-  let action: string | undefined;
-
   try {
+    const { id } = context.params;
     const body: DebateRequestBody = await request.json();
-    userId = body.userId;
-    action = body.action;
-    const { joinCode } = body;
+    const { userId, action, joinCode } = body;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -94,7 +89,7 @@ export async function POST(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const debate = await prisma.debate.findUnique({ where: { id: params.id } });
+    const debate = await prisma.debate.findUnique({ where: { id } });
     if (!debate) {
       return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     }
@@ -116,7 +111,7 @@ export async function POST(
       }
 
       updatedDebate = await prisma.debate.update({
-        where: { id: params.id },
+        where: { id },
         data: {
           conUserId: user.id,
           status: debate.proUserId ? "in-progress" : "waiting"
@@ -137,13 +132,13 @@ export async function POST(
         return NextResponse.json({ error: "You are not authorized to end this debate." }, { status: 403 });
       }
 
-      const messageCount = await prisma.message.count({ where: { debateId: debate.id } });
+      const messageCount = await prisma.message.count({ where: { debateId: id } });
       if (messageCount < 4) {
         return NextResponse.json({ error: "Debate must have at least 4 messages before it can be ended and scored." }, { status: 400 });
       }
 
       updatedDebate = await prisma.debate.update({
-        where: { id: params.id },
+        where: { id },
         data: { status: "completed" },
         include: {
           proUser: true,
@@ -152,25 +147,23 @@ export async function POST(
         }
       });
 
-      // AI Score logic
       if (updatedDebate.proUser && updatedDebate.conUser) {
         const existingScores = await prisma.score.findMany({
           where: {
-            debateId: updatedDebate.id,
+            debateId: id,
             userId: { in: [updatedDebate.proUser.id, updatedDebate.conUser.id] }
           }
         });
         const scoredUserIds = existingScores.map(s => s.userId);
 
         const debateTopic = updatedDebate.topic;
-        
         const aiScores: AIScores = {
           pro: { ...DEFAULT_SCORES },
           con: { ...DEFAULT_SCORES }
         };
 
         try {
-          const prompt = `Generate debate scores (1-10) for a debate about "${debateTopic}". Return 8 numbers separated by commas: proLogic,proClarity,proPersuasiveness,proTone,conLogic,conClarity,conPersuasiveness,conTone`;
+          const prompt = `Generate debate scores (1-10) for a debate about "${debateTopic}". Return 8 numbers: proLogic,proClarity,proPersuasiveness,proTone,conLogic,conClarity,conPersuasiveness,conTone`;
           
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
@@ -215,7 +208,7 @@ export async function POST(
             data: { 
               ...aiScores.pro, 
               userId: updatedDebate.proUser.id, 
-              debateId: updatedDebate.id 
+              debateId: id 
             } 
           });
         }
@@ -224,7 +217,7 @@ export async function POST(
             data: { 
               ...aiScores.con, 
               userId: updatedDebate.conUser.id, 
-              debateId: updatedDebate.id 
+              debateId: id 
             } 
           });
         }
