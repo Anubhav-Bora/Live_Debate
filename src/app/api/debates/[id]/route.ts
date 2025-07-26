@@ -16,10 +16,10 @@ interface AIScores {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
 try {
-    const { id } = params;
+    const { id } = await params;
 
     const debate = await prisma.debate.findUnique({
       where: { id },
@@ -50,10 +50,10 @@ try {
 
 export async function POST(
   request: Request, 
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const { userId, action, joinCode } = await request.json();
 
     if (!userId) {
@@ -260,10 +260,10 @@ Transcript:\n${transcript}`;
 
 export async function DELETE(
   request: Request, 
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const { userId } = await request.json();
 
     if (!userId) {
@@ -307,10 +307,10 @@ export async function DELETE(
 
 export async function PATCH(
   request: Request, 
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const { userId, action } = await request.json();
 
     if (!userId) {
