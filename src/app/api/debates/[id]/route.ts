@@ -14,11 +14,11 @@ interface AIScores {
   con?: ScoreData;
 }
 export async function GET(
-  request: NextRequest,
-  context: { params: { id: string } }
-) {
+  req: NextRequest,
+  { params }: { params: { id: string } }
+)  {
 try {
-    const { id } = context.params;
+    const { id } = params;
 
     const debate = await prisma.debate.findUnique({
       where: { id },
