@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-type Params = { params: Promise<{ id: string }> };
-
+// Define types
 interface ScoreData {
   logic: number;
   clarity: number;
@@ -15,10 +14,17 @@ interface AIScores {
   con?: ScoreData;
 }
 
-export async function GET(_: Request, context: Params) {
+// Define the context type
+interface Context {
+  params: {
+    id: string;
+  };
+}
+
+export async function GET(_: Request, context: Context) {
   try {
-    const { id } = await context.params;
-    
+    const { id } = context.params;
+
     const debate = await prisma.debate.findUnique({
       where: { id },
       include: {
@@ -46,9 +52,9 @@ export async function GET(_: Request, context: Params) {
   }
 }
 
-export async function POST(request: Request, context: Params) {
+export async function POST(request: Request, context: Context) {
   try {
-    const { id } = await context.params;
+    const { id } = context.params;
     const { userId, action, joinCode } = await request.json();
 
     if (!userId) {
@@ -56,11 +62,13 @@ export async function POST(request: Request, context: Params) {
     }
 
     const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     const debate = await prisma.debate.findUnique({ where: { id } });
+
     if (!debate) {
       return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     }
@@ -72,18 +80,21 @@ export async function POST(request: Request, context: Params) {
           { status: 400 }
         );
       }
+
       if ([debate.proUserId, debate.conUserId].includes(user.id)) {
         return NextResponse.json(
           { error: "Already a participant" },
           { status: 400 }
         );
       }
+
       if (!joinCode || joinCode !== debate.joinCodeCon) {
         return NextResponse.json(
           { error: "Invalid join code" },
           { status: 400 }
         );
       }
+
       if (debate.conUserId) {
         return NextResponse.json(
           { error: "Con position already taken" },
@@ -112,6 +123,7 @@ export async function POST(request: Request, context: Params) {
       const messageCount = await prisma.message.count({
         where: { debateId: debate.id },
       });
+
       if (messageCount < 4) {
         return NextResponse.json(
           { error: "At least 4 messages required" },
@@ -140,17 +152,17 @@ export async function POST(request: Request, context: Params) {
             userId: { in: [updatedDebate.proUser.id, updatedDebate.conUser.id] },
           },
         });
-        const scoredUserIds = existingScores.map((s) => s.userId);
 
+        const scoredUserIds = existingScores.map((s) => s.userId);
         const transcript = updatedDebate.messages
           .map((m) => `${m.sender.username} (${m.role}): ${m.content}`)
           .join("\n");
 
-        const prompt = `Analyze this debate transcript and score both participants (pro and con) on four criteria: logic, clarity, persuasiveness, and tone. 
+        const prompt = `Analyze this debate transcript and score both participants (pro and con) on four criteria: logic, clarity, persuasiveness, and tone.
         Provide only the scores as numbers in this exact format:
         Pro: [logic], [clarity], [persuasiveness], [tone]
         Con: [logic], [clarity], [persuasiveness], [tone]
-        
+
         Debate Topic: ${updatedDebate.topic}
         Transcript:\n${transcript}`;
 
@@ -205,6 +217,7 @@ export async function POST(request: Request, context: Params) {
           persuasiveness: 7,
           tone: 8,
         };
+
         const conScore = aiScores?.con || {
           logic: 7,
           clarity: 8,
@@ -221,6 +234,7 @@ export async function POST(request: Request, context: Params) {
             },
           });
         }
+
         if (!scoredUserIds.includes(updatedDebate.conUser.id)) {
           await prisma.score.create({
             data: {
@@ -245,9 +259,9 @@ export async function POST(request: Request, context: Params) {
   }
 }
 
-export async function DELETE(request: Request, context: Params) {
+export async function DELETE(request: Request, context: Context) {
   try {
-    const { id } = await context.params;
+    const { id } = context.params;
     const { userId } = await request.json();
 
     if (!userId) {
@@ -255,6 +269,7 @@ export async function DELETE(request: Request, context: Params) {
     }
 
     const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
@@ -288,9 +303,9 @@ export async function DELETE(request: Request, context: Params) {
   }
 }
 
-export async function PATCH(request: Request, context: Params) {
+export async function PATCH(request: Request, context: Context) {
   try {
-    const { id } = await context.params;
+    const { id } = context.params;
     const { userId, action } = await request.json();
 
     if (!userId) {
@@ -298,6 +313,7 @@ export async function PATCH(request: Request, context: Params) {
     }
 
     const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
@@ -317,6 +333,7 @@ export async function PATCH(request: Request, context: Params) {
         data: { conUserId: null, status: "waiting" },
         include: { proUser: true, conUser: true, creator: true },
       });
+
       return NextResponse.json(updatedDebate);
     }
 
