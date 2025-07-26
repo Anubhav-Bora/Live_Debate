@@ -120,7 +120,7 @@ export default function ProfilePage() {
           <GlowCard className="text-center">
             <User className="w-16 h-16 mx-auto mb-4 text-indigo-400 opacity-50" />
             <h2 className="text-2xl font-bold text-white mb-4">Profile Not Found</h2>
-            <p className="text-gray-300 mb-6">The user profile you're looking for doesn't exist.</p>
+            <p className="text-gray-300 mb-6">The user profile you&apos;re looking for doesn&apos;t exist.</p>
             <Link href="/leaderboard">
               <NeonButton variant="outline">
                 <ArrowLeft className="w-4 h-4 mr-2" />

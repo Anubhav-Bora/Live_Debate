@@ -22,20 +22,33 @@ interface Message {
   role: string;
 }
 
+interface AiFeedback {
+  pro?: {
+    score?: number;
+    mistakes?: string[];
+    improvements?: string[];
+    feedback?: string;
+  };
+  con?: {
+    score?: number;
+    mistakes?: string[];
+    improvements?: string[];
+    feedback?: string;
+  };
+}
+
 export default function DebateRoom({ 
   debateId, 
   userId, 
   isPro, 
   isCon, 
-  isJudge,
-  joinCodeCon
+  isJudge
 }: {
   debateId: string;
   userId?: string;
   isPro?: boolean;
   isCon?: boolean;
   isJudge?: boolean;
-  joinCodeCon?: string;
 }) {
   const { user } = useUser();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -48,7 +61,7 @@ export default function DebateRoom({
   const [debateStatus, setDebateStatus] = useState<string>("waiting");
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
-  const [aiFeedback, setAiFeedback] = useState<any>(null);
+  const [aiFeedback, setAiFeedback] = useState<AiFeedback | null>(null);
   const timerInterval = useRef<NodeJS.Timeout | null>(null);
   const { socket, isConnected } = useSocket();
   const [fetchedDuration, setFetchedDuration] = useState<number>(180);
@@ -120,7 +133,7 @@ export default function DebateRoom({
       setDebateStatus("completed");
       setTimeLeft(0);
     };
-    const onFeedback = (feedback: any) => {
+    const onFeedback = (feedback: AiFeedback) => {
       setAiFeedback(feedback);
     };
     socket?.on("debate_started", onStarted);

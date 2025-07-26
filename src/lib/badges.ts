@@ -1,4 +1,68 @@
-export const BADGES = [
+// Define proper TypeScript interfaces
+interface BadgeCriteria {
+  debateCount?: number;
+  avgPersuasiveness?: number;
+  avgLogic?: number;
+  avgClarity?: number;
+  votesWon?: number;
+}
+
+interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  criteria: BadgeCriteria;
+}
+
+interface Score {
+  logic: number;
+  clarity: number;
+  persuasiveness: number;
+}
+
+interface Debate {
+  id: string;
+  proUserId?: string;
+  conUserId?: string;
+}
+
+interface Vote {
+  winner: string;
+  debate: Debate;
+}
+
+interface UserBadge {
+  badgeId: string;
+}
+
+interface User {
+  id: string;
+  scores: Score[];
+  debatesCreated: Debate[];
+  debatesPro: Debate[];
+  debatesCon: Debate[];
+  Vote: Vote[];
+  UserBadge: UserBadge[];
+}
+
+interface PrismaClient {
+  user: {
+    findUnique: (params: {
+      where: { id: string };
+      include: {
+        scores: boolean;
+        debatesCreated: boolean;
+        debatesPro: boolean;
+        debatesCon: boolean;
+        Vote: boolean;
+        UserBadge: boolean;
+      };
+    }) => Promise<User | null>;
+  };
+}
+
+export const BADGES: Badge[] = [
   {
     id: "beginner",
     name: "Beginner",
@@ -50,7 +114,7 @@ export const BADGES = [
   },
 ];
 
-export async function checkBadges(userId: string, prisma: any) {
+export async function checkBadges(userId: string, prisma: PrismaClient): Promise<Badge[]> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
@@ -65,8 +129,8 @@ export async function checkBadges(userId: string, prisma: any) {
 
   if (!user) return [];
 
-  const earnedBadges = [];
-  const currentBadgeIds = user.UserBadge.map((ub: any) => ub.badgeId);
+  const earnedBadges: Badge[] = [];
+  const currentBadgeIds = user.UserBadge.map((ub: UserBadge) => ub.badgeId);
 
   // Calculate stats
   const debateCount = [
@@ -74,11 +138,12 @@ export async function checkBadges(userId: string, prisma: any) {
     ...user.debatesPro,
     ...user.debatesCon,
   ].filter(
-    (v: any, i: any, a: any) => a.findIndex((t: any) => t.id === v.id) === i
+    (debate: Debate, index: number, array: Debate[]) => 
+      array.findIndex((d: Debate) => d.id === debate.id) === index
   ).length;
 
   const totalScores = user.scores.reduce(
-    (acc: any, score: any) => {
+    (acc: { logic: number; clarity: number; persuasiveness: number }, score: Score) => {
       acc.logic += score.logic;
       acc.clarity += score.clarity;
       acc.persuasiveness += score.persuasiveness;
@@ -90,9 +155,9 @@ export async function checkBadges(userId: string, prisma: any) {
   const avgLogic = user.scores.length > 0 ? totalScores.logic / user.scores.length : 0;
   const avgClarity = user.scores.length > 0 ? totalScores.clarity / user.scores.length : 0;
   const avgPersuasiveness = user.scores.length > 0 ? totalScores.persuasiveness / user.scores.length : 0;
-  const votesWon = user.Vote.filter((vote: any) => 
-    vote.winner === "pro" && vote.debate.proUserId === userId ||
-    vote.winner === "con" && vote.debate.conUserId === userId
+  const votesWon = user.Vote.filter((vote: Vote) => 
+    (vote.winner === "pro" && vote.debate.proUserId === userId) ||
+    (vote.winner === "con" && vote.debate.conUserId === userId)
   ).length;
 
   // Check each badge

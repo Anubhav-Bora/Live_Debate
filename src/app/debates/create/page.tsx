@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useUser } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -17,6 +16,16 @@ import { GlowCard } from "@/components/ui/glow-card"
 import { NeonButton } from "@/components/ui/neon-button"
 import { ArrowLeft, Sparkles, Clock, Globe, Lock, Copy, CheckCircle, Zap, MessageSquare } from "lucide-react"
 
+interface Debate {
+  id: string
+  joinCodeCon: string
+  topic?: string
+  duration?: number
+  isPublic?: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
 export default function CreateDebatePage() {
   const { user } = useUser()
   const router = useRouter()
@@ -24,42 +33,11 @@ export default function CreateDebatePage() {
   const [duration, setDuration] = useState(180)
   const [isPublic, setIsPublic] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [createdDebate, setCreatedDebate] = useState<any>(null)
+  const [createdDebate, setCreatedDebate] = useState<Debate | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!topic.trim()) {
-      toast.error("Topic is required")
-      return
-    }
-
-    setLoading(true)
-    try {
-      const res = await fetch("/api/debates", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          topic,
-          duration,
-          isPublic,
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setCreatedDebate(data)
-        toast.success("Debate created successfully!")
-      } else {
-        const errorData = await res.json()
-        toast.error(errorData.error || "Failed to create debate")
-      }
-    } catch (err) {
-      console.error(err)
-      toast.error("An unexpected error occurred")
-    } finally {
-      setLoading(false)
-    }
+    await handleCreate()
   }
 
   const handleCreate = async () => {
@@ -82,7 +60,7 @@ export default function CreateDebatePage() {
         }),
       })
       if (res.ok) {
-        const data = await res.json()
+        const data: Debate = await res.json()
         setCreatedDebate(data)
         toast.success("Debate created successfully!")
       } else {

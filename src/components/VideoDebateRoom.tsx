@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import SimplePeer from "simple-peer";
 import { useSocket } from "@/context/SocketContext";
-import { Button } from "@/components/ui/button";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 
 interface VideoDebateRoomProps {
@@ -10,11 +9,25 @@ interface VideoDebateRoomProps {
   role: "pro" | "con";
 }
 
+interface SignalData {
+  type: string;
+  sdp?: string;
+  candidate?: RTCIceCandidate;
+  [key: string]: any;
+}
+
+interface PeerInstance {
+  signal: (data: SignalData) => void;
+  destroy: () => void;
+  on: (event: string, callback: (...args: any[]) => void) => void;
+  off: (event: string, callback: (...args: any[]) => void) => void;
+}
+
 export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateRoomProps) {
   const { socket } = useSocket();
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [peer, setPeer] = useState<any>(null);
+  const [peer, setPeer] = useState<PeerInstance | null>(null);
   const [connected, setConnected] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -32,7 +45,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
       .then(devices => {
         const videoInputs = devices.filter(device => device.kind === 'videoinput');
         setVideoDevices(videoInputs);
-        // Select the first non-virtual camera (usually the real one)
         const realCamera = videoInputs.find(device => 
           !device.label.toLowerCase().includes('virtual') && 
           !device.label.toLowerCase().includes('obs')
@@ -66,20 +78,17 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
   // Join debate room and handle signaling
   useEffect(() => {
     if (!socket || !stream) return;
+    
     console.log(`[VideoDebateRoom] Joining debate room: debate_${debateId} as ${role} (${userId})`);
     socket.emit("join_debate", { debateId, userId, role });
 
-    // Wait a bit for the other participant to potentially join
     const timeout = setTimeout(() => {
-      // Only one peer should initiate (e.g., pro)
       const initiator = role === "pro";
       console.log(`[VideoDebateRoom] Creating peer as ${initiator ? 'initiator' : 'receiver'}`);
       
-      // ICE servers for WebRTC (STUN/TURN)
       const iceServers = [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        // Add TURN server for better connectivity across networks
         {
           urls: 'turn:openrelay.metered.ca:80',
           username: 'openrelayproject',
@@ -102,26 +111,24 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         trickle: false, 
         stream,
         config: { iceServers }
-      });
+      }) as unknown as PeerInstance;
+      
       setPeer(p);
 
-      p.on("signal", (data: any) => {
+      p.on("signal", (data: SignalData) => {
         console.log("[VideoDebateRoom] Sending signal:", data);
         socket.emit("signal", { debateId, userId, signal: data });
       });
 
       p.on("stream", (remoteStream: MediaStream) => {
-        console.log("[VideoDebateRoom] Received remote stream with tracks:", remoteStream.getTracks().map(t => t.kind));
+        console.log("[VideoDebateRoom] Received remote stream");
         setRemoteStream(remoteStream);
         if (remoteVideoRef.current) {
           remoteVideoRef.current.srcObject = remoteStream;
-          remoteVideoRef.current.play().catch((e) => {
-            console.warn("[VideoDebateRoom] Remote video play error:", e);
-          });
+          remoteVideoRef.current.play().catch(console.warn);
         }
         setConnected(true);
         setMediaError(null);
-        console.log("[VideoDebateRoom] Received remote stream.");
       });
 
       p.on("error", (err: Error) => {
@@ -145,8 +152,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         console.log("[VideoDebateRoom] ICE connection state:", state);
       });
 
-      // Listen for signaling data from the other peer
-      const onSignal = ({ userId: fromId, signal }: any) => {
+      const onSignal = ({ userId: fromId, signal }: { userId: string, signal: SignalData }) => {
         if (fromId !== userId) {
           console.log("[VideoDebateRoom] Received signal from other peer:", signal);
           try {
@@ -165,7 +171,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
           p.destroy();
         }
       };
-    }, 2000); // Wait 2 seconds for other participant to join
+    }, 2000);
 
     return () => {
       clearTimeout(timeout);
@@ -177,23 +183,17 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     if (localVideoRef.current && stream && lastLocalStream.current !== stream) {
       localVideoRef.current.srcObject = stream;
       lastLocalStream.current = stream;
-      localVideoRef.current.play().catch((e) => {
-        console.warn("[VideoDebateRoom] Local video play error:", e);
-      });
+      localVideoRef.current.play().catch(console.warn);
     }
     if (remoteVideoRef.current && remoteStream && lastRemoteStream.current !== remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
       lastRemoteStream.current = remoteStream;
-      remoteVideoRef.current.play().catch((e) => {
-        console.warn("[VideoDebateRoom] Remote video play error:", e);
-      });
+      remoteVideoRef.current.play().catch(console.warn);
     }
   }, [stream, remoteStream]);
 
-  // Enable speech recognition only when connected and stream is available
   const transcript = useSpeechRecognition(!!stream);
 
-  // Emit transcript updates as they change
   useEffect(() => {
     if (!socket || !debateId || !role) return;
     socket.emit("transcript_update", {
@@ -204,7 +204,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     });
   }, [transcript, socket, debateId, userId, role]);
 
-  // Listen for transcript updates from server
   useEffect(() => {
     if (!socket) return;
     const onTranscriptUpdate = ({ role: updateRole, transcript: updateTranscript }: { role: string, transcript: string }) => {
@@ -217,7 +216,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     };
   }, [socket]);
 
-  // Set own transcript immediately for local user
   useEffect(() => {
     if (role === "pro") setProTranscript(transcript);
     if (role === "con") setConTranscript(transcript);
@@ -225,7 +223,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 w-full">
-      {/* Video Section */}
       <div className="flex-1">
         <div className="relative flex flex-col items-center justify-center p-4 w-full h-[400px] md:h-[500px]">
           {mediaError && (
@@ -234,7 +231,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
             </div>
           )}
           
-          {/* Camera Selection */}
           {videoDevices.length > 1 && (
             <div className="mb-4 w-full max-w-md">
               <label className="block text-sm font-medium text-gray-700 mb-2">Select Camera:</label>
@@ -252,9 +248,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
             </div>
           )}
           
-          {/* Video Container */}
           <div className="relative w-full h-full flex items-center justify-center">
-            {/* Remote (opponent) video - large */}
             {remoteStream ? (
               <video
                 ref={remoteVideoRef}
@@ -281,7 +275,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
               </div>
             )}
             
-            {/* Local (own) video - small overlay */}
             <video
               ref={localVideoRef}
               autoPlay
@@ -291,7 +284,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
               style={{ border: '2px solid white' }}
             />
             
-            {/* Connection Status */}
             <div className="absolute top-4 right-4 z-20">
               <div className={`px-3 py-1 rounded-full text-xs font-medium ${
                 connected 
@@ -302,7 +294,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
               </div>
             </div>
 
-            {/* Debug Info (only show in development) */}
             {process.env.NODE_ENV === 'development' && (
               <div className="absolute bottom-20 left-4 z-20 bg-black/80 text-white text-xs p-2 rounded">
                 <div>Role: {role}</div>
@@ -316,11 +307,9 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         </div>
       </div>
 
-      {/* Transcript Section */}
       <div className="w-full lg:w-80 bg-white rounded-lg border border-gray-200 p-4">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Live Transcripts</h3>
         
-        {/* Your Transcript */}
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-2">
             <div className={`w-3 h-3 rounded-full ${role === 'pro' ? 'bg-green-500' : 'bg-red-500'}`}></div>
@@ -337,7 +326,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
           </div>
         </div>
         
-        {/* Opponent Transcript */}
         <div>
           <div className="flex items-center gap-2 mb-2">
             <div className={`w-3 h-3 rounded-full ${role === 'pro' ? 'bg-red-500' : 'bg-green-500'}`}></div>
@@ -349,20 +337,19 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
                 conTranscript ? (
                   <span>{conTranscript}</span>
                 ) : (
-                  <span className="text-gray-400 italic">Waiting for opponent's transcript...</span>
+                  <span className="text-gray-400 italic">Waiting for opponent&apos;s transcript...</span>
                 )
               ) : (
                 proTranscript ? (
                   <span>{proTranscript}</span>
                 ) : (
-                  <span className="text-gray-400 italic">Waiting for opponent's transcript...</span>
+                  <span className="text-gray-400 italic">Waiting for opponent&apos;s transcript...</span>
                 )
               )}
             </div>
           </div>
         </div>
 
-        {/* Connection Info */}
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>Status:</span>

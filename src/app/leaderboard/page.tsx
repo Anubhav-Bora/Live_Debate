@@ -19,10 +19,12 @@ interface UserScore {
   badges: number
 }
 
+type TimeRange = "week" | "month" | "all"
+
 export default function LeaderboardPage() {
   const [users, setUsers] = useState<UserScore[]>([])
   const [loading, setLoading] = useState(true)
-  const [timeRange, setTimeRange] = useState<"week" | "month" | "all">("week")
+  const [timeRange, setTimeRange] = useState<TimeRange>("week")
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
@@ -109,7 +111,7 @@ export default function LeaderboardPage() {
                 <NeonButton
                   key={option.value}
                   variant={timeRange === option.value ? "primary" : "outline"}
-                  onClick={() => setTimeRange(option.value as any)}
+                  onClick={() => setTimeRange(option.value as TimeRange)}
                 >
                   {option.icon}
                   <span className="ml-2">{option.label}</span>

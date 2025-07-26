@@ -1,17 +1,28 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getAuth } from "@clerk/nextjs/server";
+import { NextApiRequest } from "next";
 
 const prisma = new PrismaClient();
 
+interface VoteRequestBody {
+  debateId: string;
+  winner: "pro" | "con";
+}
+
 export async function POST(req: Request) {
   try {
-    const { userId } = getAuth(req as any);
+    // Properly type the request for getAuth
+    const authRequest = {
+      headers: Object.fromEntries(req.headers.entries())
+    } as unknown as NextApiRequest;
+    
+    const { userId } = getAuth(authRequest);
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { debateId, winner } = await req.json();
+    const { debateId, winner } = await req.json() as VoteRequestBody;
     if (!debateId || !winner) {
       return NextResponse.json(
         { error: "Debate ID and winner are required" },

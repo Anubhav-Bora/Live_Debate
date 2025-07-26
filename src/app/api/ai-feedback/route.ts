@@ -45,8 +45,6 @@ export async function POST(req: Request) {
       headers: {
         "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://yourdomain.com",
-        "X-Title": "DebateArena"
       },
       body: JSON.stringify({
         model: "anthropic/claude-3-haiku", // Free model

@@ -1,9 +1,11 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from "react";
-import  io  from "socket.io-client"; // only importing io, ignoring Socket type
+import io from "socket.io-client";
+
+type SocketType = ReturnType<typeof io>;
 
 type SocketContextType = {
-  socket: any | null; // 👈 use `any` to bypass type checking
+  socket: SocketType | null;
   isConnected: boolean;
 };
 
@@ -17,7 +19,7 @@ export const useSocket = () => {
 };
 
 export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
-  const [socket, setSocket] = useState<any | null>(null); // 👈 use `any` here too
+  const [socket, setSocket] = useState<SocketType | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       setIsConnected(false);
     });
 
-    socketInstance.on("connect_error", (error: any) => { // 👈 error type ignored
+    socketInstance.on("connect_error", (error: Error) => {
       console.error("❌ Connection error:", error.message);
       setIsConnected(false);
     });

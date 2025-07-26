@@ -1,6 +1,45 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+interface Message {
+  sender: { username: string };
+  role: string;
+  content: string;
+}
+
+interface Score {
+  logic: number;
+  clarity: number;
+  persuasiveness: number;
+  tone: number;
+}
+
+interface AIScores {
+  pro: Score;
+  con: Score;
+}
+
+interface DebateRequestBody {
+  userId?: string;
+  action?: string;
+  joinCode?: string;
+}
+
+interface OpenRouterResponse {
+  choices?: Array<{
+    message?: {
+      content: string;
+    };
+  }>;
+}
+
+const DEFAULT_SCORES: Score = {
+  logic: 7,
+  clarity: 8,
+  persuasiveness: 7,
+  tone: 8
+};
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -41,7 +80,7 @@ export async function POST(
   let action: string | undefined;
   
   try {
-    const body = await request.json();
+    const body: DebateRequestBody = await request.json();
     userId = body.userId;
     action = body.action;
     const { joinCode } = body;
@@ -108,12 +147,10 @@ export async function POST(
       if (debate.status === "completed") {
         return NextResponse.json({ error: "Debate is already completed." }, { status: 400 });
       }
-      // Only allow pro, con, or creator to end the debate
       const allowedUserIds = [debate.proUserId, debate.conUserId, debate.creatorId];
       if (!allowedUserIds.includes(user.id)) {
         return NextResponse.json({ error: "You are not authorized to end this debate." }, { status: 403 });
       }
-      // Require at least 4 messages before scoring
       const messageCount = await prisma.message.count({ where: { debateId: debate.id } });
       if (messageCount < 4) {
         return NextResponse.json({ error: "Debate must have at least 4 messages before it can be ended and scored." }, { status: 400 });
@@ -139,14 +176,19 @@ export async function POST(
           }
         });
         const scoredUserIds = existingScores.map(s => s.userId);
-        // Build transcript for AI
         const transcript = updatedDebate.messages
-          .map((msg: any) => `${msg.sender.username} (${msg.role}): ${msg.content}`)
+          .map((msg: Message) => `${msg.sender.username} (${msg.role}): ${msg.content}`)
           .join("\n");
         const debateTopic = updatedDebate.topic;
-        let aiScores: any = null;
+        
+        // Initialize with default scores
+        const aiScores: AIScores = {
+          pro: { ...DEFAULT_SCORES },
+          con: { ...DEFAULT_SCORES }
+        };
+
         try {
-          const prompt = `\n    Analyze this debate transcript and provide detailed feedback on both participants' performance.\n    \n    Debate Topic: ${debateTopic}\n    \n    Transcript:\n    ${transcript}\n    \n    Provide feedback in the following format for each participant:\n    1. Argument Structure (1-10): Score and detailed analysis\n    2. Logical Consistency (1-10): Score and detailed analysis\n    3. Persuasiveness (1-10): Score and detailed analysis\n    4. Tone and Delivery (1-10): Score and detailed analysis\n    5. Overall Effectiveness (1-10): Score and summary\n    \n    Also provide 3 specific suggestions for improvement for each participant.\n    `;
+          const prompt = `Analyze this debate transcript and provide detailed feedback on both participants' performance.\n\nDebate Topic: ${debateTopic}\n\nTranscript:\n${transcript}\n\nProvide feedback in the following format for each participant:\n1. Argument Structure (1-10): Score and detailed analysis\n2. Logical Consistency (1-10): Score and detailed analysis\n3. Persuasiveness (1-10): Score and detailed analysis\n4. Tone and Delivery (1-10): Score and detailed analysis\n5. Overall Effectiveness (1-10): Score and summary\n\nAlso provide 3 specific suggestions for improvement for each participant.`;
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -160,16 +202,15 @@ export async function POST(
               max_tokens: 1500
             })
           });
-          const data = await response.json();
+          
+          const data: OpenRouterResponse = await response.json();
           const analysis = data.choices?.[0]?.message?.content;
-          // Parse scores for pro and con from analysis (simple regex-based extraction)
+          
           if (analysis) {
-            aiScores = { pro: {}, con: {} };
-            // Try to extract scores for each participant
             const proMatch = analysis.match(/pro.*?(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/i);
             const conMatch = analysis.match(/con.*?(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/i);
-            // Fallback: try to extract all numbers in order
-            const allScores = Array.from(analysis.matchAll(/(\d{1,2})/g)).map((m: any) => parseInt(m[1]));
+            const allScores = Array.from(analysis.matchAll(/(\d{1,2})/g)).map((m: RegExpMatchArray) => parseInt(m[1]));
+            
             if (proMatch && proMatch.length >= 5) {
               aiScores.pro = {
                 logic: Number(proMatch[1]),
@@ -185,6 +226,7 @@ export async function POST(
                 tone: allScores[3],
               };
             }
+            
             if (conMatch && conMatch.length >= 5) {
               aiScores.con = {
                 logic: Number(conMatch[1]),
@@ -201,17 +243,16 @@ export async function POST(
               };
             }
           }
-        } catch (err) {
-          // Fallback to static scores if AI fails
-          aiScores = null;
+        } catch (error) {
+          console.error("Error generating AI scores:", error);
+          // Keep the default scores if AI fails
         }
-        // Save scores for pro and con
-        const proScore = aiScores?.pro || { logic: 7, clarity: 8, persuasiveness: 7, tone: 8 };
-        const conScore = aiScores?.con || { logic: 7, clarity: 8, persuasiveness: 7, tone: 8 };
+        
+        // Save scores
         if (!scoredUserIds.includes(updatedDebate.proUser.id)) {
           await prisma.score.create({
             data: {
-              ...proScore,
+              ...aiScores.pro,
               userId: updatedDebate.proUser.id,
               debateId: updatedDebate.id
             }
@@ -220,7 +261,7 @@ export async function POST(
         if (!scoredUserIds.includes(updatedDebate.conUser.id)) {
           await prisma.score.create({
             data: {
-              ...conScore,
+              ...aiScores.con,
               userId: updatedDebate.conUser.id,
               debateId: updatedDebate.id
             }
@@ -246,7 +287,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const { userId } = await request.json();
+    const { userId } = await request.json() as { userId?: string };
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -272,26 +313,20 @@ export async function DELETE(
       return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     }
 
-    // Only allow the debate creator (pro user) to delete
     if (debate.proUserId !== user.id) {
       return NextResponse.json({ error: "Only the debate creator can delete this debate" }, { status: 403 });
     }
 
-    // Delete related data first (cascade delete)
     await prisma.$transaction([
-      // Delete messages
       prisma.message.deleteMany({
         where: { debateId: params.id }
       }),
-      // Delete scores
       prisma.score.deleteMany({
         where: { debateId: params.id }
       }),
-      // Delete votes
       prisma.vote.deleteMany({
         where: { debateId: params.id }
       }),
-      // Delete the debate
       prisma.debate.delete({
         where: { id: params.id }
       })
@@ -315,7 +350,7 @@ export async function PATCH(
   let action: string | undefined;
   
   try {
-    const body = await request.json();
+    const body: DebateRequestBody = await request.json();
     userId = body.userId;
     action = body.action;
 
@@ -343,7 +378,6 @@ export async function PATCH(
       return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     }
 
-    // Only allow debate creator to remove participants
     if (debate.proUserId !== user.id) {
       return NextResponse.json({ error: "Only the debate creator can remove participants" }, { status: 403 });
     }
@@ -354,8 +388,6 @@ export async function PATCH(
       if (!debate.proUser) {
         return NextResponse.json({ error: "No Pro participant to remove" }, { status: 400 });
       }
-      
-      // Cannot remove pro user as they are the creator and required
       return NextResponse.json({ error: "Cannot remove the Pro participant as they are the debate creator" }, { status: 400 });
     } else if (action === "remove_con") {
       if (!debate.conUser) {

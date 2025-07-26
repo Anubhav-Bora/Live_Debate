@@ -33,22 +33,64 @@ import {
   X,
 } from "lucide-react"
 
+interface Debate {
+  id: string;
+  topic: string;
+  status: string;
+  duration: number;
+  joinCodeCon: string;
+  proUser?: {
+    clerkId: string;
+    username: string;
+    id: string;
+  };
+  conUser?: {
+    clerkId: string;
+    username: string;
+    id: string;
+  };
+}
+
+interface Message {
+  id: string;
+  content: string;
+  role: string;
+  sender?: {
+    username: string;
+  };
+}
+
+interface AIFeedback {
+  pro?: {
+    score?: string;
+    mistakes?: string[];
+    improvements?: string[];
+    feedback?: string;
+  };
+  con?: {
+    score?: string;
+    mistakes?: string[];
+    improvements?: string[];
+    feedback?: string;
+  };
+}
+
 export default function DebatePage() {
   const params = useParams()
   const id = params?.id as string
   const { user } = useUser()
   const router = useRouter()
-  const [debate, setDebate] = useState<any>(null)
+  const [debate, setDebate] = useState<Debate | null>(null)
   const [role, setRole] = useState<"pro" | "con" | "viewer">("viewer")
   const [joinCode, setJoinCode] = useState("")
   const [loading, setLoading] = useState(true)
   const { socket, isConnected } = useSocket()
-  const [debateStatus, setDebateStatus] = useState<string>(debate?.status || "waiting")
+  const [debateStatus, setDebateStatus] = useState<string>("waiting")
   const [timer, setTimer] = useState<number | null>(null)
-  const [messages, setMessages] = useState<any[]>([])
+  const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
   const [isSending, setIsSending] = useState(false)
-  const [aiFeedback, setAiFeedback] = useState<any>(null)
+  const [aiFeedback, setAiFeedback] = useState<AIFeedback | null>(null)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const timerInterval = useRef<NodeJS.Timeout | null>(null)
 
@@ -60,6 +102,7 @@ export default function DebatePage() {
         if (res.ok) {
           const data = await res.json()
           setDebate(data)
+          setDebateStatus(data.status || "waiting")
           if (user?.id) {
             if (data.proUser?.clerkId === user.id) {
               setRole("pro")
@@ -69,12 +112,10 @@ export default function DebatePage() {
           }
         } else {
           setDebate(null)
-          setLoading(false)
           toast.error(`Failed to fetch debate: ${res.status}`)
         }
-      } catch (error) {
+      } catch (err) {
         setDebate(null)
-        setLoading(false)
         toast.error("Error fetching debate")
       } finally {
         setLoading(false)
@@ -96,18 +137,20 @@ export default function DebatePage() {
       setTimer(0)
     }
 
+    const onFeedback = (feedback: AIFeedback) => {
+      setAiFeedback(feedback)
+    }
+
     socket.on("debate_started", onStarted)
     socket.on("debate_ended", onEnded)
+    socket.on("debate_feedback", onFeedback)
 
     return () => {
       socket.off("debate_started", onStarted)
       socket.off("debate_ended", onEnded)
+      socket.off("debate_feedback", onFeedback)
     }
   }, [socket])
-
-  useEffect(() => {
-    if (debate?.status) setDebateStatus(debate.status)
-  }, [debate?.status])
 
   // Fetch messages
   useEffect(() => {
@@ -118,8 +161,8 @@ export default function DebatePage() {
         if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
         const data = await res.json()
         setMessages(data)
-      } catch (error) {
-        // ignore for now
+      } catch (err) {
+        console.log("Error fetching messages:", err)
       }
     }
 
@@ -138,7 +181,7 @@ export default function DebatePage() {
         if (prev === null) return null
         if (prev <= 1) {
           setDebateStatus("completed")
-          clearInterval(timerInterval.current!)
+          clearInterval(timerInterval.current as NodeJS.Timeout)
           return 0
         }
         return prev - 1
@@ -149,19 +192,6 @@ export default function DebatePage() {
       if (timerInterval.current) clearInterval(timerInterval.current)
     }
   }, [debateStatus, timer])
-
-  // Listen for AI feedback
-  useEffect(() => {
-    if (!socket) return
-    const onFeedback = (feedback: any) => {
-      setAiFeedback(feedback)
-    }
-
-    socket.on("debate_feedback", onFeedback)
-    return () => {
-      socket.off("debate_feedback", onFeedback)
-    }
-  }, [socket])
 
   const handleJoin = async (action: "join_con") => {
     if (!user?.id || !id) return
@@ -187,10 +217,12 @@ export default function DebatePage() {
         try {
           const errorData = await res.json()
           errorMsg = errorData.error || errorMsg
-        } catch (e) {}
+        } catch (e) {
+          console.error("Error parsing error response:", e)
+        }
         toast.error(errorMsg)
       }
-    } catch (error) {
+    } catch (err) {
       toast.error("An error occurred while joining")
     }
   }
@@ -218,16 +250,11 @@ export default function DebatePage() {
       })
       if (!res.ok) throw new Error(await res.text())
       setNewMessage("")
-    } catch (error) {
+    } catch (err) {
       toast.error("Failed to send message")
     } finally {
       setIsSending(false)
     }
-  }
-
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text)
-    toast.success(`${label} copied to clipboard!`)
   }
 
   const formatTime = (seconds: number) => {
@@ -265,13 +292,11 @@ export default function DebatePage() {
   const handleDeleteDebate = async () => {
     if (!user?.id || !id) return
     
-    // Only allow creator to delete
-    if (debate.proUser?.clerkId !== user.id) {
+    if (debate?.proUser?.clerkId !== user.id) {
       toast.error("Only the debate creator can delete this debate")
       return
     }
     
-    // Confirmation dialog
     if (!confirm("Are you sure you want to delete this debate? This action cannot be undone.")) {
       return
     }
@@ -294,13 +319,13 @@ export default function DebatePage() {
         const errorData = await res.json()
         toast.error(errorData.error || "Failed to delete debate")
       }
-    } catch (error) {
+    } catch (err) {
       toast.error("An error occurred while deleting the debate")
     }
   }
 
   const handleRemoveParticipant = async (participantType: "con") => {
-    if (!user?.id || !id) return;
+    if (!user?.id || !id || !debate) return;
     if (debate.proUser?.clerkId !== user.id) {
       toast.error("Only the debate creator can remove participants");
       return;
@@ -320,7 +345,7 @@ export default function DebatePage() {
         const errorData = await res.json();
         toast.error(errorData.error || "Failed to remove participant");
       }
-    } catch (error) {
+    } catch (err) {
       toast.error("An error occurred while removing the participant");
     }
   };
@@ -465,7 +490,6 @@ export default function DebatePage() {
                     <Badge className="bg-red-500/20 text-red-300 border-red-500/30">You</Badge>
                   )}
                 </div>
-                {/* Remove button - only show for debate creator */}
                 {debate.proUser?.clerkId === user?.id && (
                   <button
                     onClick={() => handleRemoveParticipant("con")}
@@ -561,7 +585,6 @@ export default function DebatePage() {
             transition={{ delay: 0.5 }}
             className="mb-8"
           >
-            {/* Start Debate button for pro user when waiting */}
             {role === "pro" && debateStatus === "waiting" && (
               <div className="mb-6 flex justify-center">
                 <NeonButton onClick={handleStartDebate} disabled={!isConnected} size="lg">

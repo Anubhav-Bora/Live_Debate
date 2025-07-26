@@ -24,12 +24,14 @@ interface Debate {
   _count: { messages: number }
 }
 
+type FilterType = "all" | "waiting" | "in-progress" | "completed"
+
 export default function DebatesPage() {
   const { isSignedIn, user } = useUser()
   const [debates, setDebates] = useState<Debate[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [filter, setFilter] = useState<"all" | "waiting" | "in-progress" | "completed">("all")
+  const [filter, setFilter] = useState<FilterType>("all")
 
   useEffect(() => {
     const fetchDebates = async () => {
@@ -196,7 +198,7 @@ export default function DebatesPage() {
                     key={option.value}
                     variant={filter === option.value ? "primary" : "outline"}
                     size="sm"
-                    onClick={() => setFilter(option.value as any)}
+                    onClick={() => setFilter(option.value as FilterType)}
                     className="whitespace-nowrap"
                   >
                     {option.icon}

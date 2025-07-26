@@ -1,11 +1,25 @@
 "use client";
 import { useState } from "react";
 
+interface Message {
+  sender: {
+    username: string;
+  };
+  role: string;
+  content: string;
+}
+
+interface Debate {
+  topic: string;
+  messages: Message[];
+  // Add other properties as needed
+}
+
 export default function AnalysisReport({
   debate,
   onBack,
 }: {
-  debate: any;
+  debate: Debate;
   onBack: () => void;
 }) {
   const [loading, setLoading] = useState(false);
@@ -15,7 +29,7 @@ export default function AnalysisReport({
     setLoading(true);
     try {
       const transcript = debate.messages
-        .map((msg: any) => `${msg.sender.username} (${msg.role}): ${msg.content}`)
+        .map((msg: Message) => `${msg.sender.username} (${msg.role}): ${msg.content}`)
         .join("\n");
 
       const res = await fetch("/api/analyze", {
