@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// Type definitions
 interface Message {
   sender: { username: string };
   role: string;
@@ -40,12 +41,13 @@ const DEFAULT_SCORES: Score = {
   tone: 8
 };
 
-export const GET = async (
-  request: Request,
+// GET Handler - Properly typed for Next.js App Router
+export async function GET(
+  request: NextRequest,
   { params }: { params: { id: string } }
-): Promise<NextResponse> => {
+): Promise<NextResponse> {
   try {
-    if (!params.id) {
+    if (!params?.id) {
       return NextResponse.json(
         { error: "Debate ID is required" },
         { status: 400 }
@@ -80,12 +82,13 @@ export const GET = async (
       { status: 500 }
     );
   }
-};
+}
 
-export const POST = async (
-  request: Request,
+// POST Handler
+export async function POST(
+  request: NextRequest,
   { params }: { params: { id: string } }
-): Promise<NextResponse> => {
+): Promise<NextResponse> {
   let userId: string | undefined;
   let action: string | undefined;
   
@@ -97,13 +100,6 @@ export const POST = async (
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!params.id) {
-      return NextResponse.json(
-        { error: "Debate ID is required" },
-        { status: 400 }
-      );
     }
 
     const user = await prisma.user.findUnique({ 
@@ -294,24 +290,18 @@ export const POST = async (
       { status: 500 }
     );
   }
-};
+}
 
-export const DELETE = async (
-  request: Request,
+// DELETE Handler
+export async function DELETE(
+  request: NextRequest,
   { params }: { params: { id: string } }
-): Promise<NextResponse> => {
+): Promise<NextResponse> {
   try {
     const { userId } = await request.json() as { userId?: string };
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!params.id) {
-      return NextResponse.json(
-        { error: "Debate ID is required" },
-        { status: 400 }
-      );
     }
 
     const user = await prisma.user.findUnique({ 
@@ -361,12 +351,13 @@ export const DELETE = async (
       { status: 500 }
     );
   }
-};
+}
 
-export const PATCH = async (
-  request: Request,
+// PATCH Handler
+export async function PATCH(
+  request: NextRequest,
   { params }: { params: { id: string } }
-): Promise<NextResponse> => {
+): Promise<NextResponse> {
   let userId: string | undefined;
   let action: string | undefined;
   
@@ -377,13 +368,6 @@ export const PATCH = async (
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    if (!params.id) {
-      return NextResponse.json(
-        { error: "Debate ID is required" },
-        { status: 400 }
-      );
     }
 
     const user = await prisma.user.findUnique({ 
@@ -446,9 +430,10 @@ export const PATCH = async (
       { status: 500 }
     );
   }
-};
+}
 
-export const OPTIONS = async (): Promise<NextResponse> => {
+// OPTIONS Handler
+export async function OPTIONS(): Promise<NextResponse> {
   return new NextResponse(null, {
     headers: {
       'Access-Control-Allow-Origin': '*',
@@ -456,4 +441,4 @@ export const OPTIONS = async (): Promise<NextResponse> => {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     }
   });
-};
+}
