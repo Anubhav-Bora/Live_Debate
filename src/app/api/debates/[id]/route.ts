@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse , type NextRequest} from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // Define types
@@ -13,9 +13,11 @@ interface AIScores {
   pro?: ScoreData;
   con?: ScoreData;
 }
-
-export async function GET(_: Request, context: { params: { id: string } }) {
-  try {
+export async function GET(
+  request: NextRequest,
+  context: { params: { id: string } }
+) {
+try {
     const { id } = context.params;
 
     const debate = await prisma.debate.findUnique({
