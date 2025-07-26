@@ -2,12 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // Type definitions
-interface Message {
-  sender: { username: string };
-  role: string;
-  content: string;
-}
-
 interface Score {
   logic: number;
   clarity: number;
@@ -154,11 +148,7 @@ export async function POST(
         include: {
           proUser: true,
           conUser: true,
-          creator: true,
-          messages: {
-            orderBy: { createdAt: "asc" },
-            include: { sender: true }
-          }
+          creator: true
         }
       });
 
@@ -172,7 +162,6 @@ export async function POST(
         });
         const scoredUserIds = existingScores.map(s => s.userId);
 
-        const messages = updatedDebate.messages;
         const debateTopic = updatedDebate.topic;
         
         const aiScores: AIScores = {
@@ -181,7 +170,7 @@ export async function POST(
         };
 
         try {
-          const prompt = `Analyze this debate about "${debateTopic}" and score both participants on logic, clarity, persuasiveness, and tone (1-10). Return only 8 numbers separated by commas: proLogic,proClarity,proPersuasiveness,proTone,conLogic,conClarity,conPersuasiveness,conTone`;
+          const prompt = `Generate debate scores (1-10) for a debate about "${debateTopic}". Return 8 numbers separated by commas: proLogic,proClarity,proPersuasiveness,proTone,conLogic,conClarity,conPersuasiveness,conTone`;
           
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
