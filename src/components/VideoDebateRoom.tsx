@@ -4,10 +4,27 @@ import { useSocket } from "@/context/SocketContext";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 
 // Define custom types
+type SignalCallback = (data: SignalData) => void;
+type StreamCallback = (stream: MediaStream) => void;
+type ErrorCallback = (error: Error) => void;
+type ConnectCallback = () => void;
+type CloseCallback = () => void;
+type IceStateChangeCallback = (state: string) => void;
+
 type PeerInstance = {
-  on: (event: string, callback: (...args: any[]) => void) => void;
-  off: (event: string, callback: (...args: any[]) => void) => void;
-  signal: (data: any) => void;
+  on(event: "signal", callback: SignalCallback): void;
+  on(event: "stream", callback: StreamCallback): void;
+  on(event: "error", callback: ErrorCallback): void;
+  on(event: "connect", callback: ConnectCallback): void;
+  on(event: "close", callback: CloseCallback): void;
+  on(event: "iceStateChange", callback: IceStateChangeCallback): void;
+  off(event: "signal", callback: SignalCallback): void;
+  off(event: "stream", callback: StreamCallback): void;
+  off(event: "error", callback: ErrorCallback): void;
+  off(event: "connect", callback: ConnectCallback): void;
+  off(event: "close", callback: CloseCallback): void;
+  off(event: "iceStateChange", callback: IceStateChangeCallback): void;
+  signal: (data: SignalData) => void;
   destroy: () => void;
   // Add other methods and properties as needed
 };
@@ -26,6 +43,16 @@ interface VideoDebateRoomProps {
   debateId: string;
   userId: string;
   role: "pro" | "con";
+}
+
+interface TranscriptUpdateData {
+  role: string;
+  transcript: string;
+}
+
+interface SignalEventData {
+  userId: string;
+  signal: SignalData;
 }
 
 export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateRoomProps) {
@@ -116,7 +143,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         trickle: false,
         stream,
         config: { iceServers }
-      });
+      }) as PeerInstance;
 
       setPeer(p);
 
@@ -157,7 +184,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         console.log("[VideoDebateRoom] ICE connection state:", state);
       });
 
-      const onSignal = ({ userId: fromId, signal }: { userId: string, signal: SignalData }) => {
+      const onSignal = ({ userId: fromId, signal }: SignalEventData) => {
         if (fromId !== userId) {
           console.log("[VideoDebateRoom] Received signal from other peer:", signal);
           try {
@@ -212,7 +239,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
 
   useEffect(() => {
     if (!socket) return;
-    const onTranscriptUpdate = ({ role: updateRole, transcript: updateTranscript }: { role: string, transcript: string }) => {
+    const onTranscriptUpdate = ({ role: updateRole, transcript: updateTranscript }: TranscriptUpdateData) => {
       if (updateRole === "pro") setProTranscript(updateTranscript);
       if (updateRole === "con") setConTranscript(updateTranscript);
     };

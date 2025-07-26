@@ -113,7 +113,7 @@ export default function DebatePage() {
           setDebate(null)
           toast.error(`Failed to fetch debate: ${res.status}`)
         }
-      } catch (error) {
+      } catch {
         setDebate(null)
         toast.error("Error fetching debate")
       } finally {
@@ -154,8 +154,8 @@ export default function DebatePage() {
         if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
         const data = await res.json()
         setMessages(data)
-      } catch (error) {
-        console.log("Error fetching messages:", error)
+      } catch {
+        console.log("Error fetching messages")
       }
     }
     fetchMessages()
@@ -207,12 +207,12 @@ export default function DebatePage() {
         try {
           const errorData = await res.json()
           errorMsg = errorData.error || errorMsg
-        } catch (e) {
-          console.error("Error parsing error response:", e)
+        } catch {
+          console.error("Error parsing error response")
         }
         toast.error(errorMsg)
       }
-    } catch (error) {
+    } catch {
       toast.error("An error occurred while joining")
     }
   }
@@ -240,7 +240,7 @@ export default function DebatePage() {
       })
       if (!res.ok) throw new Error(await res.text())
       setNewMessage("")
-    } catch (error) {
+    } catch {
       toast.error("Failed to send message")
     } finally {
       setIsSending(false)
@@ -309,7 +309,7 @@ export default function DebatePage() {
         const errorData = await res.json()
         toast.error(errorData.error || "Failed to delete debate")
       }
-    } catch (error) {
+    } catch {
       toast.error("An error occurred while deleting the debate")
     }
   }
@@ -335,7 +335,7 @@ export default function DebatePage() {
         const errorData = await res.json();
         toast.error(errorData.error || "Failed to remove participant");
       }
-    } catch (error) {
+    } catch {
       toast.error("An error occurred while removing the participant");
     }
   };
