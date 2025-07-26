@@ -87,7 +87,7 @@ export async function POST(
         );
       }
 
-      if (!joinCode || joinCode !== debate.joinCodeCon) {
+      if (!joinCode || joinCode.trim().toUpperCase() !== debate.joinCodeCon) {
         return NextResponse.json(
           { error: "Invalid join code" },
           { status: 400 }
