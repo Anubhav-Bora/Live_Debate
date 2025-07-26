@@ -41,21 +41,18 @@ const DEFAULT_SCORES: Score = {
   tone: 8
 };
 
-// GET Handler - Properly typed for Next.js App Router
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-): Promise<NextResponse> {
+// ✅ FIXED GET Handler
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    if (!params?.id) {
-      return NextResponse.json(
-        { error: "Debate ID is required" },
-        { status: 400 }
-      );
+    const { pathname } = new URL(request.url);
+    const id = pathname.match(/\/api\/debates\/([^/]+)/)?.[1];
+
+    if (!id) {
+      return NextResponse.json({ error: "Debate ID is required" }, { status: 400 });
     }
 
     const debate = await prisma.debate.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         proUser: true,
         conUser: true,
@@ -68,19 +65,13 @@ export async function GET(
     });
 
     if (!debate) {
-      return NextResponse.json(
-        { error: "Debate not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     }
 
     return NextResponse.json(debate);
   } catch (error) {
     console.error("Error fetching debate:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -91,7 +82,7 @@ export async function POST(
 ): Promise<NextResponse> {
   let userId: string | undefined;
   let action: string | undefined;
-  
+
   try {
     const body: DebateRequestBody = await request.json();
     userId = body.userId;
@@ -102,8 +93,8 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({ 
-      where: { clerkId: userId } 
+    const user = await prisma.user.findUnique({
+      where: { clerkId: userId }
     });
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -121,32 +112,21 @@ export async function POST(
 
     if (action === "join_con") {
       if (debate.status !== "waiting") {
-        return NextResponse.json(
-          { error: "Cannot join: Debate is not open for joining." },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Cannot join: Debate is not open for joining." }, { status: 400 });
       }
       if (debate.proUserId === user.id || debate.conUserId === user.id) {
-        return NextResponse.json(
-          { error: "You are already a participant in this debate." },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "You are already a participant in this debate." }, { status: 400 });
       }
       if (!joinCode || joinCode !== debate.joinCodeCon) {
-        return NextResponse.json(
-          { error: "Invalid join code for Con position" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Invalid join code for Con position" }, { status: 400 });
       }
       if (debate.conUserId) {
-        return NextResponse.json(
-          { error: "Con position already taken" },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: "Con position already taken" }, { status: 400 });
       }
+
       updatedDebate = await prisma.debate.update({
         where: { id: params.id },
-        data: { 
+        data: {
           conUserId: user.id,
           status: debate.proUserId ? "in-progress" : "waiting"
         },
@@ -160,14 +140,17 @@ export async function POST(
       if (debate.status === "completed") {
         return NextResponse.json({ error: "Debate is already completed." }, { status: 400 });
       }
+
       const allowedUserIds = [debate.proUserId, debate.conUserId, debate.creatorId];
       if (!allowedUserIds.includes(user.id)) {
         return NextResponse.json({ error: "You are not authorized to end this debate." }, { status: 403 });
       }
+
       const messageCount = await prisma.message.count({ where: { debateId: debate.id } });
       if (messageCount < 4) {
         return NextResponse.json({ error: "Debate must have at least 4 messages before it can be ended and scored." }, { status: 400 });
       }
+
       updatedDebate = await prisma.debate.update({
         where: { id: params.id },
         data: { status: "completed" },
@@ -181,6 +164,7 @@ export async function POST(
           }
         }
       });
+
       if (updatedDebate.proUser && updatedDebate.conUser) {
         const existingScores = await prisma.score.findMany({
           where: {
@@ -189,11 +173,9 @@ export async function POST(
           }
         });
         const scoredUserIds = existingScores.map(s => s.userId);
-        const transcript = updatedDebate.messages
-          .map((msg: Message) => `${msg.sender.username} (${msg.role}): ${msg.content}`)
-          .join("\n");
+        const transcript = updatedDebate.messages.map((msg: Message) => `${msg.sender.username} (${msg.role}): ${msg.content}`).join("\n");
         const debateTopic = updatedDebate.topic;
-        
+
         const aiScores: AIScores = {
           pro: { ...DEFAULT_SCORES },
           con: { ...DEFAULT_SCORES }
@@ -214,51 +196,30 @@ export async function POST(
               max_tokens: 1500
             })
           });
-          
+
           const data: OpenRouterResponse = await response.json();
           const analysis = data.choices?.[0]?.message?.content;
-          
-          if (analysis) {
-            const proMatch = analysis.match(/pro.*?(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/i);
-            const conMatch = analysis.match(/con.*?(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})/i);
-            const allScores = Array.from(analysis.matchAll(/(\d{1,2})/g)).map((m: RegExpMatchArray) => parseInt(m[1]));
-            
-            if (proMatch && proMatch.length >= 5) {
-              aiScores.pro = {
-                logic: Number(proMatch[1]),
-                clarity: Number(proMatch[2]),
-                persuasiveness: Number(proMatch[3]),
-                tone: Number(proMatch[4]),
-              };
-            } else if (allScores.length >= 4) {
-              aiScores.pro = {
-                logic: allScores[0],
-                clarity: allScores[1],
-                persuasiveness: allScores[2],
-                tone: allScores[3],
-              };
-            }
-            
-            if (conMatch && conMatch.length >= 5) {
-              aiScores.con = {
-                logic: Number(conMatch[1]),
-                clarity: Number(conMatch[2]),
-                persuasiveness: Number(conMatch[3]),
-                tone: Number(conMatch[4]),
-              };
-            } else if (allScores.length >= 8) {
-              aiScores.con = {
-                logic: allScores[4],
-                clarity: allScores[5],
-                persuasiveness: allScores[6],
-                tone: allScores[7],
-              };
-            }
+
+          const allScores = Array.from(analysis?.matchAll(/(\d{1,2})/g) ?? []).map((m: RegExpMatchArray) => parseInt(m[1]));
+
+          if (allScores.length >= 8) {
+            aiScores.pro = {
+              logic: allScores[0],
+              clarity: allScores[1],
+              persuasiveness: allScores[2],
+              tone: allScores[3]
+            };
+            aiScores.con = {
+              logic: allScores[4],
+              clarity: allScores[5],
+              persuasiveness: allScores[6],
+              tone: allScores[7]
+            };
           }
         } catch (error) {
           console.error("Error generating AI scores:", error);
         }
-        
+
         if (!scoredUserIds.includes(updatedDebate.proUser.id)) {
           await prisma.score.create({
             data: {
@@ -285,10 +246,7 @@ export async function POST(
     return NextResponse.json(updatedDebate);
   } catch (error) {
     console.error("Error updating debate:", { error, userId, debateId: params.id, action });
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -304,8 +262,8 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({ 
-      where: { clerkId: userId } 
+    const user = await prisma.user.findUnique({
+      where: { clerkId: userId }
     });
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -329,27 +287,16 @@ export async function DELETE(
     }
 
     await prisma.$transaction([
-      prisma.message.deleteMany({
-        where: { debateId: params.id }
-      }),
-      prisma.score.deleteMany({
-        where: { debateId: params.id }
-      }),
-      prisma.vote.deleteMany({
-        where: { debateId: params.id }
-      }),
-      prisma.debate.delete({
-        where: { id: params.id }
-      })
+      prisma.message.deleteMany({ where: { debateId: params.id } }),
+      prisma.score.deleteMany({ where: { debateId: params.id } }),
+      prisma.vote.deleteMany({ where: { debateId: params.id } }),
+      prisma.debate.delete({ where: { id: params.id } })
     ]);
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error deleting debate:", { error, debateId: params.id });
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -360,7 +307,7 @@ export async function PATCH(
 ): Promise<NextResponse> {
   let userId: string | undefined;
   let action: string | undefined;
-  
+
   try {
     const body: DebateRequestBody = await request.json();
     userId = body.userId;
@@ -370,8 +317,8 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({ 
-      where: { clerkId: userId } 
+    const user = await prisma.user.findUnique({
+      where: { clerkId: userId }
     });
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -397,18 +344,15 @@ export async function PATCH(
     let updatedDebate;
 
     if (action === "remove_pro") {
-      if (!debate.proUser) {
-        return NextResponse.json({ error: "No Pro participant to remove" }, { status: 400 });
-      }
       return NextResponse.json({ error: "Cannot remove the Pro participant as they are the debate creator" }, { status: 400 });
     } else if (action === "remove_con") {
       if (!debate.conUser) {
         return NextResponse.json({ error: "No Con participant to remove" }, { status: 400 });
       }
-      
+
       updatedDebate = await prisma.debate.update({
         where: { id: params.id },
-        data: { 
+        data: {
           conUserId: null,
           status: "waiting"
         },
@@ -425,10 +369,7 @@ export async function PATCH(
     return NextResponse.json(updatedDebate);
   } catch (error) {
     console.error("Error updating debate:", { error, userId, debateId: params.id, action });
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
@@ -436,9 +377,9 @@ export async function PATCH(
 export async function OPTIONS(): Promise<NextResponse> {
   return new NextResponse(null, {
     headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization"
     }
   });
 }
