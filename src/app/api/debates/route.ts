@@ -15,7 +15,7 @@ interface DebateRequestBody {
   topic: string;
   duration?: number;
   isPublic?: boolean;
-  proDisplayName?: string | null;
+  proDisplayName?: string ;
 }
 
 export async function GET() {
