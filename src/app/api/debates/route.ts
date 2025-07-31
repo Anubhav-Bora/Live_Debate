@@ -48,11 +48,12 @@ export async function GET() {
 export async function POST(req: Request) {
   let userId: string | undefined;
   let topic: string | undefined;
+  let body: any;
   
   try {
-    const body = await req.json();
+    body = await req.json();
     topic = body.topic;
-    const { duration, isPublic } = body;
+    const { duration, isPublic, proDisplayName } = body;
     const authSession = await auth();
     userId = authSession.userId || undefined;
 
@@ -83,6 +84,7 @@ export async function POST(req: Request) {
         isPublic: isPublic !== false,
         creatorId: user.id,
         proUserId: user.id,
+        proDisplayName: proDisplayName ? proDisplayName.trim() : null,
       },
       include: {
         proUser: true,
@@ -98,7 +100,12 @@ export async function POST(req: Request) {
       topic: newDebate.topic
     });
   } catch (error) {
-    console.error("Error creating debate:", { error, userId, topic });
+    console.error("Error creating debate:", {
+      error: error instanceof Error ? error.stack || error.message : error,
+      userId,
+      topic,
+      body,
+    });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

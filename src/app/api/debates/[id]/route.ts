@@ -123,11 +123,20 @@ export async function POST(
         where: { debateId: debate.id },
       });
 
+      // If not enough messages, mark as not happened
       if (messageCount < 4) {
-        return NextResponse.json(
-          { error: "At least 4 messages required" },
-          { status: 400 }
-        );
+        const updatedDebate = await prisma.debate.update({
+          where: { id },
+          data: {
+            status: "completed",
+            aiFeedback: { message: "Debate did not happen due to insufficient participation." },
+          },
+          include: { proUser: true, conUser: true, creator: true },
+        });
+        return NextResponse.json({
+          ...updatedDebate,
+          aiFeedback: updatedDebate.aiFeedback,
+        });
       }
 
       const updatedDebate = await prisma.debate.update({
@@ -157,15 +166,9 @@ export async function POST(
           .map((m) => `${m.sender.username} (${m.role}): ${m.content}`)
           .join("\n");
 
-        const prompt = `Analyze this debate transcript and score both participants (pro and con) on four criteria: logic, clarity, persuasiveness, and tone.
-Provide only the scores as numbers in this exact format:
-Pro: [logic], [clarity], [persuasiveness], [tone]
-Con: [logic], [clarity], [persuasiveness], [tone]
+        const prompt = `Analyze this debate transcript and score both participants (pro and con) on four criteria: logic, clarity, persuasiveness, and tone.\nProvide only the scores as numbers in this exact format:\nPro: [logic], [clarity], [persuasiveness], [tone]\nCon: [logic], [clarity], [persuasiveness], [tone]\n\nDebate Topic: ${updatedDebate.topic}\nTranscript:\n${transcript}`;
 
-Debate Topic: ${updatedDebate.topic}
-Transcript:\n${transcript}`;
-
-        let aiScores: AIScores | null = null;
+        let aiScores = null;
 
         try {
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -243,9 +246,45 @@ Transcript:\n${transcript}`;
             },
           });
         }
+
+        // --- Call feedback API and store in aiFeedback ---
+        let aiFeedback = null;
+        try {
+          const feedbackRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/analyze`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ transcript, debateTopic: updatedDebate.topic }),
+          });
+          const feedbackData = await feedbackRes.json();
+          aiFeedback = feedbackData.analysis || null;
+        } catch (err) {
+          console.error("AI feedback error:", err);
+        }
+
+        const debateWithFeedback = await prisma.debate.update({
+          where: { id: updatedDebate.id },
+          data: { aiFeedback },
+          include: { proUser: true, conUser: true, creator: true },
+        });
+
+        return NextResponse.json({
+          ...debateWithFeedback,
+          aiFeedback: debateWithFeedback.aiFeedback,
+        });
       }
 
-      return NextResponse.json(updatedDebate);
+      // If for some reason proUser or conUser is missing
+      const debateWithAbsent = await prisma.debate.update({
+        where: { id },
+        data: {
+          aiFeedback: { message: "Debate did not happen due to missing participant." },
+        },
+        include: { proUser: true, conUser: true, creator: true },
+      });
+      return NextResponse.json({
+        ...debateWithAbsent,
+        aiFeedback: debateWithAbsent.aiFeedback,
+      });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

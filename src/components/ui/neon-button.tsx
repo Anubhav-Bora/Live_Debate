@@ -48,11 +48,8 @@ export function NeonButton({
         "relative rounded-lg font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed",
         variants[variant],
         sizes[size],
-        "hover:scale-105 active:scale-95",
         className,
       )}
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
     >
       <span className="relative z-10">{children}</span>
       <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300" />

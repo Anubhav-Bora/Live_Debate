@@ -38,6 +38,7 @@ interface Debate {
   status: string;
   duration: number;
   joinCodeCon: string;
+  proDisplayName?: string;
   proUser?: {
     clerkId: string;
     username: string;
@@ -60,6 +61,8 @@ interface Message {
 }
 
 interface AIFeedback {
+  error?: string;
+  message?: string;
   pro?: {
     score?: string;
     mistakes?: string[];
@@ -91,6 +94,9 @@ export default function DebatePage() {
   const [isSending, setIsSending] = useState(false)
   const [aiFeedback, setAiFeedback] = useState<AIFeedback | null>(null)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
+  const [feedbackLoading, setFeedbackLoading] = useState(false)
+  const [feedbackError, setFeedbackError] = useState<string | null>(null)
+  const [messagesLoading, setMessagesLoading] = useState(true);
   const timerInterval = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
@@ -125,30 +131,89 @@ export default function DebatePage() {
 
   useEffect(() => {
     if (!socket) return
+    
     const onStarted = ({ duration }: { duration: number }) => {
+      console.log("✅ Debate started:", { duration })
       setDebateStatus("in-progress")
       setTimer(duration)
     }
+    
     const onEnded = () => {
+      console.log("✅ Debate ended - waiting for AI feedback...")
       setDebateStatus("completed")
       setTimer(0)
+      setFeedbackLoading(true)
+      setFeedbackError(null)
     }
+    
     const onFeedback = (feedback: AIFeedback) => {
+      console.log("✅ AI Feedback received:", feedback)
       setAiFeedback(feedback)
+      setFeedbackLoading(false)
+      // Only set feedbackError for real errors, not fallback messages
+      if (feedback?.error && feedback.error !== "Insufficient content") {
+        setFeedbackError("AI analysis failed. Please refresh to try again.")
+      } else {
+        setFeedbackError(null)
+      }
     }
+    
+    const onError = (error: any) => {
+      console.error("❌ Socket error:", error)
+      if (debateStatus === "completed") {
+        setFeedbackLoading(false)
+        setFeedbackError("Connection error while loading feedback.")
+      }
+    }
+    
     socket.on("debate_started", onStarted)
     socket.on("debate_ended", onEnded)
     socket.on("debate_feedback", onFeedback)
+    socket.on("error", onError)
+    
     return () => {
       socket.off("debate_started", onStarted)
-      socket.off("debate_ended", onEnded)
+      socket.off("debate_ended", onEnded) 
       socket.off("debate_feedback", onFeedback)
+      socket.off("error", onError)
     }
-  }, [socket])
+  }, [socket, debateStatus])
+
+  useEffect(() => {
+    if (debateStatus === "completed" && feedbackLoading && !aiFeedback) {
+      const fallbackTimer = setTimeout(async () => {
+        try {
+          console.log("⏰ Socket timeout - trying API fallback for feedback...")
+          const res = await fetch(`/api/debates/${id}`)
+          if (res.ok) {
+            const debateData = await res.json()
+            if (debateData.aiFeedback) {
+              console.log("✅ Fallback feedback received:", debateData.aiFeedback)
+              setAiFeedback(debateData.aiFeedback)
+              setFeedbackLoading(false)
+            } else {
+              setFeedbackError("AI feedback is still being generated. Please wait...")
+              setTimeout(() => {
+                setFeedbackLoading(true)
+                setFeedbackError(null)
+              }, 5000)
+            }
+          }
+        } catch (error) {
+          console.error("❌ Fallback fetch failed:", error)
+          setFeedbackError("Failed to load AI feedback. Please refresh the page.")
+          setFeedbackLoading(false)
+        }
+      }, 10000)
+      
+      return () => clearTimeout(fallbackTimer)
+    }
+  }, [debateStatus, feedbackLoading, aiFeedback, id])
 
   useEffect(() => {
     if (!id) return
     const fetchMessages = async () => {
+      setMessagesLoading(true);
       try {
         const res = await fetch(`/api/debates/${id}/messages`)
         if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
@@ -156,6 +221,8 @@ export default function DebatePage() {
         setMessages(data)
       } catch {
         console.log("Error fetching messages")
+      } finally {
+        setMessagesLoading(false);
       }
     }
     fetchMessages()
@@ -183,8 +250,10 @@ export default function DebatePage() {
     }
   }, [debateStatus, timer])
 
+  const [joinLoading, setJoinLoading] = useState(false);
   const handleJoin = async (action: "join_con") => {
     if (!user?.id || !id) return
+    setJoinLoading(true);
     try {
       const res = await fetch(`/api/debates/${id}`, {
         method: "POST",
@@ -214,16 +283,54 @@ export default function DebatePage() {
       }
     } catch {
       toast.error("An error occurred while joining")
+    } finally {
+      setJoinLoading(false);
     }
   }
 
+  const [startLoading, setStartLoading] = useState(false);
   const handleStartDebate = () => {
     if (!socket || !isConnected) {
       toast.error("Socket not connected. Please refresh the page.")
       return
     }
+    setStartLoading(true);
     socket.emit("start_debate", { debateId: id })
   }
+
+  const [removeLoading, setRemoveLoading] = useState(false);
+  const handleRemoveParticipant = async () => {
+    if (!user?.id || !id || !debate) return;
+    setRemoveLoading(true);
+    if (debate.proUser?.clerkId !== user.id) {
+      toast.error("Only the debate creator can remove participants");
+      setRemoveLoading(false);
+      return;
+    }
+    if (!confirm("Are you sure you want to remove the Con participant?")) {
+      setRemoveLoading(false);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/debates/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, action: "remove_con" })
+      });
+      if (res.ok) {
+        const updatedDebate = await res.json();
+        setDebate(updatedDebate);
+        toast.success("Con participant removed");
+      } else {
+        const errorData = await res.json();
+        toast.error(errorData.error || "Failed to remove participant");
+      }
+    } catch {
+      toast.error("An error occurred while removing the participant");
+    } finally {
+      setRemoveLoading(false);
+    }
+  };
 
   const handleSendMessage = async () => {
     if (!newMessage.trim() || isSending || !user?.id) return
@@ -314,32 +421,6 @@ export default function DebatePage() {
     }
   }
 
-  const handleRemoveParticipant = async () => {
-    if (!user?.id || !id || !debate) return;
-    if (debate.proUser?.clerkId !== user.id) {
-      toast.error("Only the debate creator can remove participants");
-      return;
-    }
-    if (!confirm("Are you sure you want to remove the Con participant?")) return;
-    try {
-      const res = await fetch(`/api/debates/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, action: "remove_con" })
-      });
-      if (res.ok) {
-        const updatedDebate = await res.json();
-        setDebate(updatedDebate);
-        toast.success("Con participant removed");
-      } else {
-        const errorData = await res.json();
-        toast.error(errorData.error || "Failed to remove participant");
-      }
-    } catch {
-      toast.error("An error occurred while removing the participant");
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen relative overflow-hidden">
@@ -402,7 +483,6 @@ export default function DebatePage() {
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(id as string);
-                      // You can add a toast notification here if needed
                     }}
                     className="text-gray-400 text-xs"
                     title="Copy Debate ID"
@@ -460,10 +540,10 @@ export default function DebatePage() {
             {debate.proUser ? (
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center text-white font-bold text-lg">
-                  {debate.proUser.username.charAt(0).toUpperCase()}
+                  {(debate.proDisplayName ?? debate.proUser.username).charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <div className="text-white font-semibold">{debate.proUser.username}</div>
+                  <div className="text-white font-semibold">{debate.proDisplayName ?? debate.proUser.username}</div>
                   {debate.proUser.clerkId === user?.id && (
                     <Badge className="bg-green-500/20 text-green-300 border-green-500/30">You</Badge>
                   )}
@@ -566,8 +646,11 @@ export default function DebatePage() {
                       />
                       <NeonButton
                         onClick={() => handleJoin("join_con")}
-                        disabled={!joinCode.trim() || !!debate.conUser}
+                        disabled={!joinCode.trim() || !!debate.conUser || joinLoading}
                       >
+                        {joinLoading ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        ) : null}
                         Join as Con
                       </NeonButton>
                     </div>
@@ -596,8 +679,12 @@ export default function DebatePage() {
           >
             {role === "pro" && debateStatus === "waiting" && (
               <div className="mb-6 flex justify-center">
-                <NeonButton onClick={handleStartDebate} disabled={!isConnected} size="lg">
-                  <Play className="w-5 h-5 mr-2" />
+                <NeonButton onClick={handleStartDebate} disabled={!isConnected || startLoading} size="lg">
+                  {startLoading ? (
+                    <div className="animate-spin rounded-full h-5 w-5 mr-2"></div>
+                  ) : (
+                    <Play className="w-5 h-5 mr-2" />
+                  )}
                   Launch Debate
                 </NeonButton>
               </div>
@@ -612,36 +699,43 @@ export default function DebatePage() {
                 <h3 className="font-semibold text-white">Live Discussion</h3>
               </div>
               <ScrollArea className="h-64 p-4">
-                {messages.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400">
-                    <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>No messages yet. Start the conversation!</p>
+                {messagesLoading ? (
+                  <div className="flex justify-center items-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+                    <span className="ml-2 text-gray-400">Loading messages...</span>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {messages.map((message) => (
-                      <motion.div
-                        key={message.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className={`p-3 rounded-lg max-w-[80%] ${
-                          message.role === "pro"
-                            ? "bg-green-500/20 border border-green-500/30"
-                            : message.role === "con"
-                              ? "bg-red-500/20 border border-red-500/30"
-                              : "bg-gray-500/20 border border-gray-500/30"
-                        }`}
-                      >
-                        <div className="font-medium text-sm flex items-center gap-2 mb-1">
-                          <span className="text-white">{message.sender?.username || message.role}</span>
-                          <Badge variant="outline" className="text-xs px-1.5 py-0.5">
-                            {message.role}
-                          </Badge>
-                        </div>
-                        <p className="whitespace-pre-wrap text-gray-200">{message.content}</p>
-                      </motion.div>
-                    ))}
-                  </div>
+                  messages.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                      <p>No messages yet. Start the conversation!</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {messages.map((message) => (
+                        <motion.div
+                          key={message.id}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          className={`p-3 rounded-lg max-w-[80%] ${
+                            message.role === "pro"
+                              ? "bg-green-500/20 border border-green-500/30"
+                              : message.role === "con"
+                                ? "bg-red-500/20 border border-red-500/30"
+                                : "bg-gray-500/20 border border-gray-500/30"
+                          }`}
+                        >
+                          <div className="font-medium text-sm flex items-center gap-2 mb-1">
+                            <span className="text-white">{message.sender?.username || message.role}</span>
+                            <Badge variant="outline" className="text-xs px-1.5 py-0.5">
+                              {message.role}
+                            </Badge>
+                          </div>
+                          <p className="whitespace-pre-wrap text-gray-200">{message.content}</p>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )
                 )}
               </ScrollArea>
               <div className="p-4 border-t border-white/10 flex gap-3">
@@ -657,7 +751,7 @@ export default function DebatePage() {
                           ? "Counter the argument as Con..."
                           : "Viewers cannot send messages"
                   }
-                  disabled={debateStatus !== "in-progress" || !(role === "pro" || role === "con")}
+                  disabled={debateStatus !== "in-progress" || !(role === "pro" || role === "con") || isSending}
                   className="bg-white/5 border-white/20 text-white placeholder:text-gray-400"
                 />
                 <NeonButton
@@ -669,111 +763,200 @@ export default function DebatePage() {
                     !(role === "pro" || role === "con")
                   }
                 >
+                  {isSending ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  ) : null}
                   Send
                 </NeonButton>
               </div>
             </GlowCard>
-            {/* AI Feedback after debate ends */}
-            {debateStatus === "completed" && aiFeedback && (
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
-                <GlowCard glowColor="rgba(139, 92, 246, 0.4)">
-                  <div className="flex items-center gap-2 mb-6">
-                    <Brain className="w-6 h-6 text-purple-400" />
-                    <h3 className="text-2xl font-bold text-white">AI Performance Analysis</h3>
-                  </div>
-                  <div className="grid md:grid-cols-2 gap-6">
-                    {/* Pro Feedback */}
-                    <div className="space-y-4">
-                      <h4 className="text-xl font-semibold text-green-400 flex items-center gap-2">
-                        <Target className="w-5 h-5" />
-                        Pro Analysis
-                      </h4>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Trophy className="w-4 h-4 text-yellow-400" />
-                          <span className="text-gray-300">Score:</span>
-                          <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
-                            {aiFeedback.pro?.score ?? "-"}
-                          </Badge>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <TrendingUp className="w-4 h-4 text-red-400" />
-                            <span className="text-gray-300 font-medium">Areas for Improvement:</span>
-                          </div>
-                          <p className="text-gray-400 text-sm">
-                            {aiFeedback.pro?.mistakes?.join(", ") ?? "None identified"}
-                          </p>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Lightbulb className="w-4 h-4 text-blue-400" />
-                            <span className="text-gray-300 font-medium">Suggestions:</span>
-                          </div>
-                          <p className="text-gray-400 text-sm">
-                            {aiFeedback.pro?.improvements?.join(", ") ?? "Keep up the great work!"}
-                          </p>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Brain className="w-4 h-4 text-purple-400" />
-                            <span className="text-gray-300 font-medium">Detailed Feedback:</span>
-                          </div>
-                          <p className="text-gray-400 text-sm">
-                            {aiFeedback.pro?.feedback ?? "Analysis in progress..."}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    {/* Con Feedback */}
-                    <div className="space-y-4">
-                      <h4 className="text-xl font-semibold text-red-400 flex items-center gap-2">
-                        <Zap className="w-5 h-5" />
-                        Con Analysis
-                      </h4>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Trophy className="w-4 h-4 text-yellow-400" />
-                          <span className="text-gray-300">Score:</span>
-                          <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
-                            {aiFeedback.con?.score ?? "-"}
-                          </Badge>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <TrendingUp className="w-4 h-4 text-red-400" />
-                            <span className="text-gray-300 font-medium">Areas for Improvement:</span>
-                          </div>
-                          <p className="text-gray-400 text-sm">
-                            {aiFeedback.con?.mistakes?.join(", ") ?? "None identified"}
-                          </p>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Lightbulb className="w-4 h-4 text-blue-400" />
-                            <span className="text-gray-300 font-medium">Suggestions:</span>
-                          </div>
-                          <p className="text-gray-400 text-sm">
-                            {aiFeedback.con?.improvements?.join(", ") ?? "Keep up the great work!"}
-                          </p>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Brain className="w-4 h-4 text-purple-400" />
-                            <span className="text-gray-300 font-medium">Detailed Feedback:</span>
-                          </div>
-                          <p className="text-gray-400 text-sm">
-                            {aiFeedback.con?.feedback ?? "Analysis in progress..."}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </GlowCard>
-              </motion.div>
-            )}
           </motion.div>
         )}
+
+        {/* AI Feedback after debate ends */}
+        {debateStatus === "completed" && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
+            <GlowCard glowColor="rgba(139, 92, 246, 0.4)">
+              <div className="flex items-center gap-2 mb-6">
+                <Brain className="w-6 h-6 text-purple-400" />
+                <h3 className="text-2xl font-bold text-white">AI Performance Analysis</h3>
+              </div>
+              
+              {feedbackLoading ? (
+                <div className="text-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+                  <p className="text-gray-300 text-lg">Analyzing debate performance...</p>
+                  <p className="text-gray-400 text-sm mt-2">Our AI is reviewing the arguments and providing detailed feedback</p>
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
+                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                    <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                  </div>
+                </div>
+              ) : feedbackError ? (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
+                    <span className="text-red-400 text-2xl">⚠️</span>
+                  </div>
+                  <p className="text-red-300 text-lg mb-2">Feedback Unavailable</p>
+                  <p className="text-gray-400 text-sm mb-4">{feedbackError}</p>
+                  <NeonButton
+                    onClick={() => {
+                      setFeedbackError(null)
+                      setFeedbackLoading(true)
+                    }}
+                    variant="outline"
+                  >
+                    Try Again
+                  </NeonButton>
+                </div>
+              ) : aiFeedback && (
+                (aiFeedback.message || aiFeedback.error) ||
+                (aiFeedback.pro?.feedback === 'No content to analyze' && aiFeedback.con?.feedback === 'No content to analyze')
+              ) ? (
+                <div className="text-center py-12">
+                  <Brain className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg text-gray-300 font-semibold">
+                    {aiFeedback.message || aiFeedback.error || 'Not enough debate content for AI analysis.'}
+                  </p>
+                </div>
+              ) : aiFeedback && aiFeedback.pro && aiFeedback.con ? (
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Pro Feedback */}
+                  <div className="space-y-4">
+                    <h4 className="text-xl font-semibold text-green-400 flex items-center gap-2">
+                      <Target className="w-5 h-5" />
+                      Pro Analysis
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Trophy className="w-4 h-4 text-yellow-400" />
+                        <span className="text-gray-300">Score:</span>
+                        <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
+                          {aiFeedback.pro?.score ?? "N/A"}/10
+                        </Badge>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <TrendingUp className="w-4 h-4 text-red-400" />
+                          <span className="text-gray-300 font-medium">Areas for Improvement:</span>
+                        </div>
+                        <div className="text-gray-400 text-sm">
+                          {aiFeedback.pro?.mistakes && aiFeedback.pro.mistakes.length > 0 ? (
+                            <ul className="list-disc list-inside space-y-1">
+                              {aiFeedback.pro.mistakes.map((mistake, i) => (
+                                <li key={i}>{mistake}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            "None identified"
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Lightbulb className="w-4 h-4 text-blue-400" />
+                          <span className="text-gray-300 font-medium">Suggestions:</span>
+                        </div>
+                        <div className="text-gray-400 text-sm">
+                          {aiFeedback.pro?.improvements && aiFeedback.pro.improvements.length > 0 ? (
+                            <ul className="list-disc list-inside space-y-1">
+                              {aiFeedback.pro.improvements.map((improvement, i) => (
+                                <li key={i}>{improvement}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            "Keep up the great work!"
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Brain className="w-4 h-4 text-purple-400" />
+                          <span className="text-gray-300 font-medium">Detailed Feedback:</span>
+                        </div>
+                        <p className="text-gray-400 text-sm">
+                          {aiFeedback.pro?.feedback ?? "No detailed feedback available"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Con Feedback */}
+                  <div className="space-y-4">
+                    <h4 className="text-xl font-semibold text-red-400 flex items-center gap-2">
+                      <Zap className="w-5 h-5" />
+                      Con Analysis
+                    </h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Trophy className="w-4 h-4 text-yellow-400" />
+                        <span className="text-gray-300">Score:</span>
+                        <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
+                          {aiFeedback.con?.score ?? "N/A"}/10
+                        </Badge>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <TrendingUp className="w-4 h-4 text-red-400" />
+                          <span className="text-gray-300 font-medium">Areas for Improvement:</span>
+                        </div>
+                        <div className="text-gray-400 text-sm">
+                          {aiFeedback.con?.mistakes && aiFeedback.con.mistakes.length > 0 ? (
+                            <ul className="list-disc list-inside space-y-1">
+                              {aiFeedback.con.mistakes.map((mistake, i) => (
+                                <li key={i}>{mistake}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            "None identified"
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Lightbulb className="w-4 h-4 text-blue-400" />
+                          <span className="text-gray-300 font-medium">Suggestions:</span>
+                        </div>
+                        <div className="text-gray-400 text-sm">
+                          {aiFeedback.con?.improvements && aiFeedback.con.improvements.length > 0 ? (
+                            <ul className="list-disc list-inside space-y-1">
+                              {aiFeedback.con.improvements.map((improvement, i) => (
+                                <li key={i}>{improvement}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            "Keep up the great work!"
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Brain className="w-4 h-4 text-purple-400" />
+                          <span className="text-gray-300 font-medium">Detailed Feedback:</span>
+                        </div>
+                        <p className="text-gray-400 text-sm">
+                          {aiFeedback.con?.feedback ?? "No detailed feedback available"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : aiFeedback && aiFeedback.message ? (
+                <div className="text-center py-12">
+                  <Brain className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg text-gray-300 font-semibold">{aiFeedback.message}</p>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-400">
+                  <Brain className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p>AI feedback will appear here once the debate concludes.</p>
+                </div>
+              )}
+            </GlowCard>
+          </motion.div>
+        )}
+
         {/* Viewer Message */}
         {id && role === "viewer" && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>

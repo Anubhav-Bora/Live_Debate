@@ -61,35 +61,90 @@ app.prepare().then(() => {
           where: { id: debateId },
           data: { startTime: now, status: 'in-progress' },
         });
+        
+        console.log(`✅ Debate ${debateId} started with duration: ${debate.duration}s`);
         io.to(`debate_${debateId}`).emit('debate_started', { startTime: now, duration: debate.duration });
+        
         // Schedule debate end
         setTimeout(async () => {
-          const end = new Date();
-          await prisma.debate.update({
-            where: { id: debateId },
-            data: { endTime: end, status: 'completed' },
-          });
-          io.to(`debate_${debateId}`).emit('debate_ended');
-          // --- AI FEEDBACK LOGIC ---
           try {
-            const messages = await prisma.message.findMany({
-              where: { debateId },
-              orderBy: { createdAt: 'asc' },
-            });
-            // Use live transcripts if available
-            const transcripts = debateTranscripts[debateId] || { pro: '', con: '' };
-            const aiFeedback = await getAIFeedback(messages, transcripts);
+            const end = new Date();
             await prisma.debate.update({
               where: { id: debateId },
-              data: { aiFeedback },
+              data: { endTime: end, status: 'completed' },
             });
-            io.to(`debate_${debateId}`).emit('debate_feedback', aiFeedback);
-          } catch (aiErr) {
-            console.error('AI feedback error:', aiErr);
+            
+            console.log(`✅ Debate ${debateId} ended, generating AI feedback...`);
+            io.to(`debate_${debateId}`).emit('debate_ended');
+            
+            // --- ENHANCED AI FEEDBACK LOGIC ---
+            try {
+              const messages = await prisma.message.findMany({
+                where: { debateId },
+                orderBy: { createdAt: 'asc' },
+                include: {
+                  sender: {
+                    select: { username: true }
+                  }
+                }
+              });
+              
+              // Use live transcripts if available
+              const transcripts = debateTranscripts[debateId] || { pro: '', con: '' };
+              
+              console.log(`📊 Generating feedback for debate ${debateId}:`, {
+                messageCount: messages.length,
+                proTranscriptLength: transcripts.pro.length,
+                conTranscriptLength: transcripts.con.length
+              });
+              
+              // Generate AI feedback
+              const aiFeedback = await getAIFeedback(messages, transcripts);
+              
+              // Save feedback to database
+              await prisma.debate.update({
+                where: { id: debateId },
+                data: { aiFeedback },
+              });
+              
+              console.log(`✅ AI feedback generated and saved for debate ${debateId}`);
+              
+              // Emit feedback to all connected clients
+              io.to(`debate_${debateId}`).emit('debate_feedback', aiFeedback);
+              
+              // Clean up transcripts from memory
+              delete debateTranscripts[debateId];
+              
+            } catch (aiErr) {
+              console.error(`❌ AI feedback error for debate ${debateId}:`, aiErr);
+              
+              // Send error feedback to clients
+              const errorFeedback = {
+                error: 'AI analysis failed',
+                message: 'Unable to generate feedback at this time',
+                timestamp: new Date().toISOString()
+              };
+              
+              // Save error to database
+              await prisma.debate.update({
+                where: { id: debateId },
+                data: { aiFeedback: errorFeedback },
+              });
+              
+              io.to(`debate_${debateId}`).emit('debate_feedback', errorFeedback);
+            }
+            
+          } catch (dbErr) {
+            console.error(`❌ Database error ending debate ${debateId}:`, dbErr);
+            io.to(`debate_${debateId}`).emit('error', { 
+              message: 'Failed to end debate properly' 
+            });
           }
         }, debate.duration * 1000);
+        
       } catch (err) {
         console.error('Error starting debate:', err);
+        socket.emit('error', { message: 'Failed to start debate' });
       }
     });
 
@@ -159,43 +214,125 @@ app.prepare().then(() => {
   });
 });
 
+// Enhanced AI feedback function with better error handling
 async function getAIFeedback(messages, transcripts) {
-  // Prepare the prompt for OpenRouter
-  const prompt = `You are an expert debate judge. Analyze the following debate between Pro and Con. For each side, provide:\n- A score out of 10\n- A list of mistakes\n- Suggestions for improvement\n- A short feedback paragraph\n\nDebate Transcripts (from speech-to-text):\nPRO:\n${transcripts.pro}\n\nCON:\n${transcripts.con}\n\nDebate Messages (chat):\n${messages.map(m => `[${m.role.toUpperCase()}] ${m.content}`).join('\n')}\n\nRespond in JSON with this format: { pro: { score, mistakes, improvements, feedback }, con: { score, mistakes, improvements, feedback } }`;
-
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error('Missing OPENROUTER_API_KEY');
-
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'openai/gpt-4',
-      messages: [
-        { role: 'system', content: 'You are an expert debate judge.' },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 512,
-      temperature: 0.7
-    })
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter API error: ${errorText}`);
-  }
-
-  const data = await response.json();
-  // Try to parse the JSON from the AI's response
-  let feedback;
   try {
-    const text = data.choices?.[0]?.message?.content || '';
-    feedback = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text);
-  } catch (err) {
-    feedback = { error: 'Failed to parse AI feedback', raw: data };
+    // Check if we have sufficient content
+    if (messages.length === 0 && !transcripts.pro && !transcripts.con) {
+      return {
+        error: 'Insufficient content',
+        message: 'No messages or transcripts available for analysis',
+        pro: { score: 'N/A', mistakes: [], improvements: [], feedback: 'No content to analyze' },
+        con: { score: 'N/A', mistakes: [], improvements: [], feedback: 'No content to analyze' }
+      };
+    }
+
+    // Prepare the prompt for OpenRouter
+    const prompt = `You are an expert debate judge. Analyze the following debate between Pro and Con. For each side, provide:
+- A score out of 10 (number only)
+- A list of mistakes (array of strings)
+- Suggestions for improvement (array of strings)  
+- A detailed feedback paragraph (string)
+
+Debate Transcripts (from speech-to-text):
+PRO: ${transcripts.pro || 'No transcript available'}
+
+CON: ${transcripts.con || 'No transcript available'}
+
+Debate Messages (chat):
+${messages.map(m => `[${m.role.toUpperCase()}] ${m.content}`).join('\n') || 'No messages available'}
+
+Respond ONLY in valid JSON with this exact format:
+{
+  "pro": {
+    "score": 7,
+    "mistakes": ["mistake1", "mistake2"],
+    "improvements": ["improvement1", "improvement2"],
+    "feedback": "detailed feedback paragraph"
+  },
+  "con": {
+    "score": 8,
+    "mistakes": ["mistake1", "mistake2"],
+    "improvements": ["improvement1", "improvement2"], 
+    "feedback": "detailed feedback paragraph"
   }
-  return feedback;
+}`;
+
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      throw new Error('Missing OPENROUTER_API_KEY environment variable');
+    }
+
+    console.log('🤖 Sending request to OpenRouter API...');
+    
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-4',
+        messages: [
+          { role: 'system', content: 'You are an expert debate judge. Always respond with valid JSON only.' },
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 1000,
+        temperature: 0.3
+      }),
+      timeout: 30000 // 30 second timeout
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error ${response.status}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    const aiText = data.choices?.[0]?.message?.content || '';
+    
+    if (!aiText) {
+      throw new Error('Empty response from AI');
+    }
+    
+    console.log('🤖 Raw AI response:', aiText);
+
+    // Try to parse JSON from AI response
+    let feedback;
+    try {
+      // Extract JSON from response (in case AI adds extra text)
+      const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+      const jsonStr = jsonMatch ? jsonMatch[0] : aiText;
+      feedback = JSON.parse(jsonStr);
+      
+      // Validate structure
+      if (!feedback.pro || !feedback.con) {
+        throw new Error('Invalid feedback structure');
+      }
+      
+      console.log('✅ Successfully parsed AI feedback');
+      return feedback;
+      
+    } catch (parseErr) {
+      console.error('❌ Failed to parse AI response:', parseErr);
+      // Return structured error with raw content
+      return {
+        error: 'Parse error',
+        message: 'AI response could not be parsed as JSON',
+        raw: aiText,
+        pro: { score: 'N/A', mistakes: [], improvements: [], feedback: 'Analysis failed' },
+        con: { score: 'N/A', mistakes: [], improvements: [], feedback: 'Analysis failed' }
+      };
+    }
+    
+  } catch (error) {
+    console.error('❌ getAIFeedback error:', error);
+    return {
+      error: error.message || 'Unknown error',
+      message: 'Failed to generate AI feedback',
+      timestamp: new Date().toISOString(),
+      pro: { score: 'N/A', mistakes: [], improvements: [], feedback: 'Error generating feedback' },
+      con: { score: 'N/A', mistakes: [], improvements: [], feedback: 'Error generating feedback' }
+    };
+  }
 }

@@ -1,0 +1,7 @@
+{
+  "/api/debates/[id]/messages/route": "app/api/debates/[id]/messages/route.js",
+  "/api/leaderboard/route": "app/api/leaderboard/route.js",
+  "/debates/create/page": "app/debates/create/page.js",
+  "/debates/[id]/page": "app/debates/[id]/page.js",
+  "/leaderboard/page": "app/leaderboard/page.js"
+}
