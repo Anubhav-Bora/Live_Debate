@@ -15,7 +15,7 @@ interface DebateRequestBody {
   topic: string;
   duration?: number;
   isPublic?: boolean;
-  proDisplayName?: string;
+  proDisplayName?: string | null;
 }
 
 export async function GET() {
@@ -67,7 +67,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Input validation
     if (!topic || typeof topic !== 'string' || topic.trim().length < 1) {
       return NextResponse.json({ error: "Debate topic is required." }, { status: 400 });
     }
@@ -88,7 +87,7 @@ export async function POST(req: Request) {
         isPublic: isPublic !== false,
         creatorId: user.id,
         proUserId: user.id,
-        proDisplayName: proDisplayName ? proDisplayName.trim() : null,
+        proDisplayName: proDisplayName?.trim() || null,
       },
       include: {
         proUser: true,
@@ -96,7 +95,6 @@ export async function POST(req: Request) {
       }
     });
 
-    // Return only debateId and con join code for frontend
     return NextResponse.json({
       id: newDebate.id,
       joinCodeCon: newDebate.joinCodeCon,
