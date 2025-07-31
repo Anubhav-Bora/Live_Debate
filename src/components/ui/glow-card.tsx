@@ -1,5 +1,4 @@
 "use client"
-
 import type React from "react"
 import { motion } from "framer-motion"
 import { cn } from "@/lib/utils"
@@ -8,10 +7,9 @@ interface GlowCardProps {
   children: React.ReactNode
   className?: string
   glowColor?: string
-  hover?: boolean
 }
 
-export function GlowCard({ children, className, glowColor, hover = true }: GlowCardProps) {
+export function GlowCard({ children, className, glowColor }: GlowCardProps) {
   const getDefaultGlowColor = () => {
     if (typeof window !== "undefined") {
       const isDark =
@@ -29,24 +27,12 @@ export function GlowCard({ children, className, glowColor, hover = true }: GlowC
     <motion.div
       className={cn(
         "relative glass rounded-xl p-6 transition-all duration-300 theme-transition",
-        // Remove hover scale
-        // hover && "hover:scale-[1.02]",
         className,
       )}
-      // Remove whileHover effect
-      // whileHover={
-      //   hover
-      //     ? {
-      //         boxShadow: `0 0 30px ${finalGlowColor}`,
-      //         scale: 1.02,
-      //       }
-      //     : undefined
-      // }
       style={{
         boxShadow: `0 0 20px ${finalGlowColor}`,
       }}
     >
-      {/* Remove hover opacity effect */}
       <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 transition-opacity duration-300 dark:via-white/5 light:via-black/5" />
       <div className="relative z-10">{children}</div>
     </motion.div>

@@ -131,13 +131,13 @@ export default function DebatePage() {
 
   useEffect(() => {
     if (!socket) return
-    
+
     const onStarted = ({ duration }: { duration: number }) => {
       console.log("✅ Debate started:", { duration })
       setDebateStatus("in-progress")
       setTimer(duration)
     }
-    
+
     const onEnded = () => {
       console.log("✅ Debate ended - waiting for AI feedback...")
       setDebateStatus("completed")
@@ -145,35 +145,34 @@ export default function DebatePage() {
       setFeedbackLoading(true)
       setFeedbackError(null)
     }
-    
+
     const onFeedback = (feedback: AIFeedback) => {
       console.log("✅ AI Feedback received:", feedback)
       setAiFeedback(feedback)
       setFeedbackLoading(false)
-      // Only set feedbackError for real errors, not fallback messages
       if (feedback?.error && feedback.error !== "Insufficient content") {
         setFeedbackError("AI analysis failed. Please refresh to try again.")
       } else {
         setFeedbackError(null)
       }
     }
-    
-    const onError = (error: any) => {
+
+    const onError = (error: unknown) => {
       console.error("❌ Socket error:", error)
       if (debateStatus === "completed") {
         setFeedbackLoading(false)
         setFeedbackError("Connection error while loading feedback.")
       }
     }
-    
+
     socket.on("debate_started", onStarted)
     socket.on("debate_ended", onEnded)
     socket.on("debate_feedback", onFeedback)
     socket.on("error", onError)
-    
+
     return () => {
       socket.off("debate_started", onStarted)
-      socket.off("debate_ended", onEnded) 
+      socket.off("debate_ended", onEnded)
       socket.off("debate_feedback", onFeedback)
       socket.off("error", onError)
     }
@@ -205,7 +204,7 @@ export default function DebatePage() {
           setFeedbackLoading(false)
         }
       }, 10000)
-      
+
       return () => clearTimeout(fallbackTimer)
     }
   }, [debateStatus, feedbackLoading, aiFeedback, id])
@@ -298,17 +297,13 @@ export default function DebatePage() {
     socket.emit("start_debate", { debateId: id })
   }
 
-  const [removeLoading, setRemoveLoading] = useState(false);
   const handleRemoveParticipant = async () => {
     if (!user?.id || !id || !debate) return;
-    setRemoveLoading(true);
     if (debate.proUser?.clerkId !== user.id) {
       toast.error("Only the debate creator can remove participants");
-      setRemoveLoading(false);
       return;
     }
     if (!confirm("Are you sure you want to remove the Con participant?")) {
-      setRemoveLoading(false);
       return;
     }
     try {
@@ -327,8 +322,6 @@ export default function DebatePage() {
       }
     } catch {
       toast.error("An error occurred while removing the participant");
-    } finally {
-      setRemoveLoading(false);
     }
   };
 
@@ -388,16 +381,13 @@ export default function DebatePage() {
 
   const handleDeleteDebate = async () => {
     if (!user?.id || !id) return
-
     if (debate?.proUser?.clerkId !== user.id) {
       toast.error("Only the debate creator can delete this debate")
       return
     }
-
     if (!confirm("Are you sure you want to delete this debate? This action cannot be undone.")) {
       return
     }
-
     try {
       const res = await fetch(`/api/debates/${id}`, {
         method: "DELETE",
@@ -408,7 +398,6 @@ export default function DebatePage() {
           userId: user.id,
         }),
       })
-
       if (res.ok) {
         toast.success("Debate deleted successfully")
         router.push("/debates")
@@ -633,7 +622,7 @@ export default function DebatePage() {
                     <div>• <strong>Con Code</strong> (from creator) = Join as Con participant</div>
                   </div>
                 </div>
-                
+
                 {!debate.conUser && (
                   <div>
                     <Label className="text-white font-semibold mb-2 block">Join as Con Participant</Label>
@@ -772,7 +761,6 @@ export default function DebatePage() {
             </GlowCard>
           </motion.div>
         )}
-
         {/* AI Feedback after debate ends */}
         {debateStatus === "completed" && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
@@ -781,7 +769,7 @@ export default function DebatePage() {
                 <Brain className="w-6 h-6 text-purple-400" />
                 <h3 className="text-2xl font-bold text-white">AI Performance Analysis</h3>
               </div>
-              
+
               {feedbackLoading ? (
                 <div className="text-center py-12">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
@@ -881,7 +869,7 @@ export default function DebatePage() {
                       </div>
                     </div>
                   </div>
-                  
+
                   {/* Con Feedback */}
                   <div className="space-y-4">
                     <h4 className="text-xl font-semibold text-red-400 flex items-center gap-2">
@@ -956,7 +944,6 @@ export default function DebatePage() {
             </GlowCard>
           </motion.div>
         )}
-
         {/* Viewer Message */}
         {id && role === "viewer" && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>

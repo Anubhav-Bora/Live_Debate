@@ -11,6 +11,13 @@ function generateCode(length: number): string {
   return result;
 }
 
+interface DebateRequestBody {
+  topic: string;
+  duration?: number;
+  isPublic?: boolean;
+  proDisplayName?: string;
+}
+
 export async function GET() {
   try {
     const debates = await prisma.debate.findMany({
@@ -48,10 +55,9 @@ export async function GET() {
 export async function POST(req: Request) {
   let userId: string | undefined;
   let topic: string | undefined;
-  let body: any;
   
   try {
-    body = await req.json();
+    const body: DebateRequestBody = await req.json();
     topic = body.topic;
     const { duration, isPublic, proDisplayName } = body;
     const authSession = await auth();
@@ -73,8 +79,6 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
-
-    // Removed duplicate topic restriction - users can now create debates with same topics
 
     const newDebate = await prisma.debate.create({
       data: {
@@ -104,7 +108,6 @@ export async function POST(req: Request) {
       error: error instanceof Error ? error.stack || error.message : error,
       userId,
       topic,
-      body,
     });
     return NextResponse.json(
       { error: "Internal server error" },

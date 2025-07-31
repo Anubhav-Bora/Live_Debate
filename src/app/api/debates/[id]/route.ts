@@ -1,4 +1,4 @@
-import { NextResponse , type NextRequest} from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 // Define types
@@ -18,7 +18,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-try {
+  try {
     const { id } = await params;
 
     const debate = await prisma.debate.findUnique({
@@ -49,7 +49,7 @@ try {
 }
 
 export async function POST(
-  request: Request, 
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -168,7 +168,7 @@ export async function POST(
 
         const prompt = `Analyze this debate transcript and score both participants (pro and con) on four criteria: logic, clarity, persuasiveness, and tone.\nProvide only the scores as numbers in this exact format:\nPro: [logic], [clarity], [persuasiveness], [tone]\nCon: [logic], [clarity], [persuasiveness], [tone]\n\nDebate Topic: ${updatedDebate.topic}\nTranscript:\n${transcript}`;
 
-        let aiScores = null;
+        let aiScores: AIScores | null = null;
 
         try {
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -247,7 +247,7 @@ export async function POST(
           });
         }
 
-        // --- Call feedback API and store in aiFeedback ---
+        // Call feedback API and store in aiFeedback
         let aiFeedback = null;
         try {
           const feedbackRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/analyze`, {
@@ -298,7 +298,7 @@ export async function POST(
 }
 
 export async function DELETE(
-  request: Request, 
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -345,7 +345,7 @@ export async function DELETE(
 }
 
 export async function PATCH(
-  request: Request, 
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
