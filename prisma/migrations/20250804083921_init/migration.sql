@@ -18,13 +18,15 @@ CREATE TABLE "Debate" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "duration" INTEGER NOT NULL DEFAULT 180,
     "status" TEXT NOT NULL DEFAULT 'waiting',
+    "startTime" TIMESTAMP(3),
+    "endTime" TIMESTAMP(3),
+    "aiFeedback" JSONB,
     "joinCodeCon" TEXT NOT NULL,
-    "joinCodeJudge" TEXT NOT NULL,
     "isPublic" BOOLEAN NOT NULL DEFAULT true,
+    "proDisplayName" TEXT,
     "creatorId" TEXT NOT NULL,
     "proUserId" TEXT NOT NULL,
     "conUserId" TEXT,
-    "judgeId" TEXT,
 
     CONSTRAINT "Debate_pkey" PRIMARY KEY ("id")
 );
@@ -101,9 +103,6 @@ CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 CREATE UNIQUE INDEX "Debate_joinCodeCon_key" ON "Debate"("joinCodeCon");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Debate_joinCodeJudge_key" ON "Debate"("joinCodeJudge");
-
--- CreateIndex
 CREATE UNIQUE INDEX "UserBadge_userId_badgeId_key" ON "UserBadge"("userId", "badgeId");
 
 -- CreateIndex
@@ -119,28 +118,25 @@ ALTER TABLE "Debate" ADD CONSTRAINT "Debate_proUserId_fkey" FOREIGN KEY ("proUse
 ALTER TABLE "Debate" ADD CONSTRAINT "Debate_conUserId_fkey" FOREIGN KEY ("conUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Debate" ADD CONSTRAINT "Debate_judgeId_fkey" FOREIGN KEY ("judgeId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Message" ADD CONSTRAINT "Message_debateId_fkey" FOREIGN KEY ("debateId") REFERENCES "Debate"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Message" ADD CONSTRAINT "Message_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Message" ADD CONSTRAINT "Message_debateId_fkey" FOREIGN KEY ("debateId") REFERENCES "Debate"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Score" ADD CONSTRAINT "Score_debateId_fkey" FOREIGN KEY ("debateId") REFERENCES "Debate"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Score" ADD CONSTRAINT "Score_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Score" ADD CONSTRAINT "Score_debateId_fkey" FOREIGN KEY ("debateId") REFERENCES "Debate"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "UserBadge" ADD CONSTRAINT "UserBadge_badgeId_fkey" FOREIGN KEY ("badgeId") REFERENCES "Badge"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "UserBadge" ADD CONSTRAINT "UserBadge_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "UserBadge" ADD CONSTRAINT "UserBadge_badgeId_fkey" FOREIGN KEY ("badgeId") REFERENCES "Badge"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Vote" ADD CONSTRAINT "Vote_debateId_fkey" FOREIGN KEY ("debateId") REFERENCES "Debate"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Vote" ADD CONSTRAINT "Vote_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "Vote" ADD CONSTRAINT "Vote_debateId_fkey" FOREIGN KEY ("debateId") REFERENCES "Debate"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
