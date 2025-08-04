@@ -62,14 +62,14 @@ export async function GET() {
 export async function POST(req: Request) {
   let userId: string | undefined;
   let topic: string | undefined;
-  let requestBody: unknown;
+  let requestBody: DebateRequestBody;
   
   try {
     console.log('🚀 POST /api/debates - Starting debate creation');
     
     // Parse request body
     try {
-      requestBody = await req.json();
+      requestBody = await req.json() as DebateRequestBody;
       console.log('📥 POST /api/debates - Request body parsed:', { 
         topic: requestBody.topic, 
         duration: requestBody.duration, 
@@ -78,6 +78,9 @@ export async function POST(req: Request) {
       });
     } catch (parseError) {
       console.error('❌ POST /api/debates - Failed to parse request body:', parseError);
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+    if (!requestBody) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
@@ -184,7 +187,6 @@ export async function POST(req: Request) {
       errorType: error?.constructor?.name || 'Unknown',
       userId,
       topic,
-      requestBody,
       timestamp: new Date().toISOString(),
       nodeEnv: process.env.NODE_ENV,
       databaseUrl: process.env.DATABASE_URL ? 'SET' : 'NOT_SET',

@@ -1,23 +1,5 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/ai-feedback/route": "app/api/ai-feedback/route.js",
-  "/api/analyze/route": "app/api/analyze/route.js",
-  "/api/debates/[id]/messages/route": "app/api/debates/[id]/messages/route.js",
-  "/api/debates/[id]/route": "app/api/debates/[id]/route.js",
-  "/api/debates/route": "app/api/debates/route.js",
-  "/api/generate-topic/route": "app/api/generate-topic/route.js",
-  "/api/leaderboard/route": "app/api/leaderboard/route.js",
-  "/api/sync-user/route": "app/api/sync-user/route.js",
-  "/api/users/[userId]/route": "app/api/users/[userId]/route.js",
-  "/api/users/route": "app/api/users/route.js",
-  "/api/vote/route": "app/api/vote/route.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/debates/[id]/page": "app/debates/[id]/page.js",
   "/debates/create/page": "app/debates/create/page.js",
-  "/page": "app/page.js",
-  "/leaderboard/page": "app/leaderboard/page.js",
   "/debates/page": "app/debates/page.js",
-  "/sign-in/[[...sign-in]]/page": "app/sign-in/[[...sign-in]]/page.js",
-  "/sign-up/[[...sign-up]]/page": "app/sign-up/[[...sign-up]]/page.js",
-  "/profile/[userId]/page": "app/profile/[userId]/page.js"
+  "/debates/[id]/page": "app/debates/[id]/page.js"
 }
