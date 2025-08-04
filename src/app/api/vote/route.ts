@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
 import { getAuth } from "@clerk/nextjs/server";
 import { NextApiRequest } from "next";
+import { ensureUserExists } from "@/lib/userSync";
 
 const prisma = new PrismaClient();
 
@@ -30,9 +31,13 @@ export async function POST(req: Request) {
       );
     }
 
-    const user = await prisma.user.findUnique({ where: { clerkId: userId } });
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    // Ensure user exists, create if not found
+    let user;
+    try {
+      user = await ensureUserExists(userId);
+    } catch (syncError) {
+      console.error("Error syncing user from Clerk:", syncError);
+      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
     }
 
     // Check if user already voted
