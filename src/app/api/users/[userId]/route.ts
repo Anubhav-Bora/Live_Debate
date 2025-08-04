@@ -15,7 +15,7 @@ export async function GET(
         orderBy: { createdAt: "desc" },
         take: 5
       },
-      UserBadge: {
+      userBadges: {
         include: { badge: true },
         orderBy: { earnedAt: "desc" }
       },

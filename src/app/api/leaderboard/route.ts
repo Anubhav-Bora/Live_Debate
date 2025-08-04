@@ -36,7 +36,7 @@ export async function GET(req: Request) {
             persuasiveness: true,
           },
         },
-        UserBadge: {
+        userBadges: {
           where: {
             earnedAt: {
               gte: dateFilter,
@@ -79,7 +79,7 @@ export async function GET(req: Request) {
           username: user.username,
           totalScore: Number(totalAverage.toFixed(2)),
           debateCount: user._count.debatesPro + user._count.debatesCon,
-          badges: user.UserBadge.length,
+          badges: user.userBadges.length,
         };
       })
       .sort((a, b) => b.totalScore - a.totalScore); // Step 3: Sort in JS

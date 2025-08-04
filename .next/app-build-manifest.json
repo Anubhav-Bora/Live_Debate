@@ -1,55 +1,192 @@
 {
   "pages": {
-    "/layout": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/layout.css",
-      "static/chunks/app/layout.js"
-    ],
-    "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
-    ],
-    "/debates/loading": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/debates/loading.js"
-    ],
-    "/debates/create/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/debates/create/page.js"
-    ],
-    "/api/debates/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/debates/route.js"
-    ],
-    "/debates/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/debates/[id]/page.js"
+    "/_not-found/page": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/_not-found/page-5fd596d42ab4d698.js"
     ],
     "/api/debates/[id]/messages/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/debates/[id]/messages/route.js"
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/debates/[id]/messages/route-a41a882bf5fd9dd6.js"
+    ],
+    "/layout": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/css/a7904015e0e51566.css",
+      "static/chunks/184-a82b6a1f50045f8f.js",
+      "static/chunks/405-5e6e3974cebeeed0.js",
+      "static/chunks/376-19a0fc22ed42d848.js",
+      "static/chunks/328-55d2d0bfd89f1779.js",
+      "static/chunks/331-e11faaef79df0e0a.js",
+      "static/chunks/app/layout-c61d462e13dfff2c.js"
+    ],
+    "/api/analyze/route": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/analyze/route-974ce400699a54b5.js"
     ],
     "/api/debates/[id]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/debates/[id]/route.js"
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/debates/[id]/route-c99524efa175bc69.js"
     ],
-    "/leaderboard/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/leaderboard/page.js"
+    "/api/debates/route": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/debates/route-073c83b4bad16f6e.js"
+    ],
+    "/api/generate-topic/route": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/generate-topic/route-fa1c05e171a1d1c8.js"
+    ],
+    "/api/users/[userId]/route": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/users/[userId]/route-b87ca7381d0bd651.js"
+    ],
+    "/api/ai-feedback/route": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/ai-feedback/route-261b0da45e131818.js"
     ],
     "/api/leaderboard/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/leaderboard/route.js"
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/leaderboard/route-6a4f72f930b6d18b.js"
+    ],
+    "/api/sync-user/route": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/sync-user/route-c50e0cccb12ae059.js"
+    ],
+    "/api/users/route": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/users/route-669af9ac6769f747.js"
+    ],
+    "/api/vote/route": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/api/vote/route-560fd4a3d74590ba.js"
+    ],
+    "/debates/loading": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/app/debates/loading-32145b918021f63c.js"
+    ],
+    "/debates/page": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/184-a82b6a1f50045f8f.js",
+      "static/chunks/405-5e6e3974cebeeed0.js",
+      "static/chunks/376-19a0fc22ed42d848.js",
+      "static/chunks/3-508abfe61646e71f.js",
+      "static/chunks/app/debates/page-5bf68f9a6edeea54.js"
+    ],
+    "/sign-in/[[...sign-in]]/page": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/184-a82b6a1f50045f8f.js",
+      "static/chunks/405-5e6e3974cebeeed0.js",
+      "static/chunks/app/sign-in/[[...sign-in]]/page-400db36725693cb9.js"
+    ],
+    "/debates/[id]/page": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/184-a82b6a1f50045f8f.js",
+      "static/chunks/405-5e6e3974cebeeed0.js",
+      "static/chunks/376-19a0fc22ed42d848.js",
+      "static/chunks/3-508abfe61646e71f.js",
+      "static/chunks/331-e11faaef79df0e0a.js",
+      "static/chunks/262-cf68193aeb2bdb1d.js",
+      "static/chunks/app/debates/[id]/page-fb3f1ef50b5d552d.js"
+    ],
+    "/profile/[userId]/page": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/184-a82b6a1f50045f8f.js",
+      "static/chunks/405-5e6e3974cebeeed0.js",
+      "static/chunks/376-19a0fc22ed42d848.js",
+      "static/chunks/654-f144945fbac38c77.js",
+      "static/chunks/app/profile/[userId]/page-be60921c8fb0e979.js"
+    ],
+    "/sign-up/[[...sign-up]]/page": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/184-a82b6a1f50045f8f.js",
+      "static/chunks/405-5e6e3974cebeeed0.js",
+      "static/chunks/app/sign-up/[[...sign-up]]/page-eaa8cdd34168ce8d.js"
+    ],
+    "/debates/create/page": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/184-a82b6a1f50045f8f.js",
+      "static/chunks/405-5e6e3974cebeeed0.js",
+      "static/chunks/376-19a0fc22ed42d848.js",
+      "static/chunks/3-508abfe61646e71f.js",
+      "static/chunks/app/debates/create/page-70d3c22079af9e8e.js"
+    ],
+    "/page": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/184-a82b6a1f50045f8f.js",
+      "static/chunks/405-5e6e3974cebeeed0.js",
+      "static/chunks/376-19a0fc22ed42d848.js",
+      "static/chunks/328-55d2d0bfd89f1779.js",
+      "static/chunks/app/page-dd8cda823d45dd4c.js"
+    ],
+    "/leaderboard/page": [
+      "static/chunks/webpack-8950a15a10fafc34.js",
+      "static/chunks/4bd1b696-48ed6efb1c9df887.js",
+      "static/chunks/684-138343a10ab8c344.js",
+      "static/chunks/main-app-1cf817acf223d9a2.js",
+      "static/chunks/184-a82b6a1f50045f8f.js",
+      "static/chunks/654-f144945fbac38c77.js",
+      "static/chunks/app/leaderboard/page-f4043f6d70baef05.js"
     ]
   }
 }
