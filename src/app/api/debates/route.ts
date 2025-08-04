@@ -15,7 +15,7 @@ interface DebateRequestBody {
   topic: string;
   duration?: number;
   isPublic?: boolean;
-  proDisplayName?: string ;
+  proDisplayName?: string;
 }
 
 export async function GET() {
@@ -71,24 +71,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Debate topic is required." }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({ 
-      where: { clerkId: userId }
+    const user = await prisma.user.findUnique({
+       where: { clerkId: userId }
     });
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    // Build the complete debate data object with all fields
+    const debateData = {
+      topic: topic.trim(),
+      duration: duration || 180,
+      joinCodeCon: generateCode(8),
+      isPublic: isPublic !== false,
+      creatorId: user.id,
+      proUserId: user.id,
+      proDisplayName: proDisplayName?.trim() || null, // Always include this field
+    };
+
     const newDebate = await prisma.debate.create({
-      data: {
-        topic: topic.trim(),
-        duration: duration || 180,
-        joinCodeCon: generateCode(8),
-        isPublic: isPublic !== false,
-        creatorId: user.id,
-        proUserId: user.id,
-        proDisplayName: proDisplayName?.trim() || null,
-      },
+      data: debateData,
       include: {
         proUser: true,
         creator: true
