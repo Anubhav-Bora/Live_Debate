@@ -69,7 +69,7 @@ export async function POST(req: Request) {
     
     // Parse request body
     try {
-      requestBody = await req.json();
+      requestBody = await req.json() as DebateRequestBody;
       console.log('📥 POST /api/debates - Request body parsed:', { 
         topic: requestBody.topic, 
         duration: requestBody.duration, 
