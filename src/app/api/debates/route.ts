@@ -71,12 +71,52 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Debate topic is required." }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({
+    // Try to find the user first
+    let user = await prisma.user.findUnique({
        where: { clerkId: userId }
     });
 
+    // If user doesn't exist, sync them from Clerk
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      try {
+        // Fetch user details from Clerk
+        const clerkRes = await fetch(
+          `https://api.clerk.com/v1/users/${userId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
+            },
+          }
+        );
+
+        if (!clerkRes.ok) {
+          console.error("Failed to fetch user from Clerk");
+          return NextResponse.json({ error: "Failed to sync user" }, { status: 500 });
+        }
+
+        const clerkUser = await clerkRes.json();
+
+        if (!clerkUser.email_addresses?.[0]?.email_address) {
+          console.error("No email address found for user");
+          return NextResponse.json({ error: "No email address found" }, { status: 400 });
+        }
+
+        // Create new user
+        user = await prisma.user.create({
+          data: {
+            clerkId: userId,
+            username:
+              clerkUser.username ||
+              clerkUser.email_addresses[0].email_address.split("@")[0],
+            email: clerkUser.email_addresses[0].email_address,
+          },
+        });
+
+        console.log(`✅ User synced successfully: ${user.username}`);
+      } catch (syncError) {
+        console.error("Error syncing user:", syncError);
+        return NextResponse.json({ error: "Failed to sync user" }, { status: 500 });
+      }
     }
 
     // Build the complete debate data object with all fields
