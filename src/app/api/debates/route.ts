@@ -21,6 +21,7 @@ interface DebateRequestBody {
 
 export async function GET() {
   try {
+    console.log('🔍 GET /api/debates - Starting fetch');
     const debates = await prisma.debate.findMany({
       include: {
         proUser: {
@@ -43,9 +44,14 @@ export async function GET() {
       },
       orderBy: { createdAt: 'desc' }
     });
+    console.log(`✅ GET /api/debates - Successfully fetched ${debates.length} debates`);
     return NextResponse.json(debates);
   } catch (error) {
-    console.error("Error fetching debates:", error);
+    console.error("❌ GET /api/debates - Error fetching debates:", {
+      error: error instanceof Error ? error.stack || error.message : error,
+      errorType: error?.constructor?.name || 'Unknown',
+      timestamp: new Date().toISOString()
+    });
     return NextResponse.json(
       { error: "Failed to fetch debates" },
       { status: 500 }
@@ -56,32 +62,75 @@ export async function GET() {
 export async function POST(req: Request) {
   let userId: string | undefined;
   let topic: string | undefined;
+  let requestBody: any;
   
   try {
-    const body: DebateRequestBody = await req.json();
+    console.log('🚀 POST /api/debates - Starting debate creation');
+    
+    // Parse request body
+    try {
+      requestBody = await req.json();
+      console.log('📥 POST /api/debates - Request body parsed:', { 
+        topic: requestBody.topic, 
+        duration: requestBody.duration, 
+        isPublic: requestBody.isPublic,
+        proDisplayName: requestBody.proDisplayName 
+      });
+    } catch (parseError) {
+      console.error('❌ POST /api/debates - Failed to parse request body:', parseError);
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+
+    const body: DebateRequestBody = requestBody;
     topic = body.topic;
     const { duration, isPublic, proDisplayName } = body;
-    const authSession = await auth();
-    userId = authSession.userId || undefined;
+    
+    // Check authentication
+    console.log('🔐 POST /api/debates - Checking authentication');
+    let authSession;
+    try {
+      authSession = await auth();
+      userId = authSession.userId || undefined;
+      console.log('🔐 POST /api/debates - Auth result:', { 
+        hasUserId: !!userId, 
+        userIdLength: userId?.length || 0 
+      });
+    } catch (authError) {
+      console.error('❌ POST /api/debates - Authentication error:', authError);
+      return NextResponse.json({ error: "Authentication failed" }, { status: 500 });
+    }
 
     if (!userId) {
+      console.log('❌ POST /api/debates - No user ID found in auth session');
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Validate topic
     if (!topic || typeof topic !== 'string' || topic.trim().length < 1) {
+      console.log('❌ POST /api/debates - Invalid topic:', { topic, type: typeof topic });
       return NextResponse.json({ error: "Debate topic is required." }, { status: 400 });
     }
 
-    // Ensure user exists, create if not found
+    // Ensure user exists
+    console.log('👤 POST /api/debates - Ensuring user exists for userId:', userId);
     let user;
     try {
       user = await ensureUserExists(userId);
+      console.log('✅ POST /api/debates - User ensured:', { 
+        id: user.id, 
+        username: user.username, 
+        clerkId: user.clerkId 
+      });
     } catch (syncError) {
-      console.error("Error syncing user from Clerk:", syncError);
+      console.error("❌ POST /api/debates - Error syncing user from Clerk:", {
+        error: syncError instanceof Error ? syncError.stack || syncError.message : syncError,
+        userId,
+        errorType: syncError?.constructor?.name || 'Unknown'
+      });
       return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
     }
 
-    // Build the complete debate data object with all fields
+    // Build debate data
     const debateData = {
       topic: topic.trim(),
       duration: duration || 180,
@@ -89,28 +138,57 @@ export async function POST(req: Request) {
       isPublic: isPublic !== false,
       creatorId: user.id,
       proUserId: user.id,
-      proDisplayName: proDisplayName?.trim() || null, // Always include this field
+      proDisplayName: proDisplayName?.trim() || null,
     };
+    
+    console.log('📝 POST /api/debates - Creating debate with data:', debateData);
 
-    const newDebate = await prisma.debate.create({
-      data: debateData,
-      include: {
-        proUser: true,
-        creator: true
-      }
-    });
+    // Create debate
+    let newDebate;
+    try {
+      newDebate = await prisma.debate.create({
+        data: debateData,
+        include: {
+          proUser: true,
+          creator: true
+        }
+      });
+      console.log('✅ POST /api/debates - Debate created successfully:', { 
+        id: newDebate.id, 
+        topic: newDebate.topic,
+        joinCodeCon: newDebate.joinCodeCon 
+      });
+    } catch (dbError) {
+      console.error('❌ POST /api/debates - Database error creating debate:', {
+        error: dbError instanceof Error ? dbError.stack || dbError.message : dbError,
+        errorType: dbError?.constructor?.name || 'Unknown',
+        debateData,
+        timestamp: new Date().toISOString()
+      });
+      return NextResponse.json({ error: "Database error creating debate" }, { status: 500 });
+    }
 
-    return NextResponse.json({
+    const response = {
       id: newDebate.id,
       joinCodeCon: newDebate.joinCodeCon,
       duration: newDebate.duration,
       topic: newDebate.topic
-    });
+    };
+    
+    console.log('🎉 POST /api/debates - Debate creation completed successfully:', response);
+    return NextResponse.json(response);
+    
   } catch (error) {
-    console.error("Error creating debate:", {
+    console.error("❌ POST /api/debates - Unexpected error creating debate:", {
       error: error instanceof Error ? error.stack || error.message : error,
+      errorType: error?.constructor?.name || 'Unknown',
       userId,
       topic,
+      requestBody,
+      timestamp: new Date().toISOString(),
+      nodeEnv: process.env.NODE_ENV,
+      databaseUrl: process.env.DATABASE_URL ? 'SET' : 'NOT_SET',
+      clerkSecretKey: process.env.CLERK_SECRET_KEY ? 'SET' : 'NOT_SET'
     });
     return NextResponse.json(
       { error: "Internal server error" },

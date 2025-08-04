@@ -9,17 +9,44 @@ const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
 const port = process.env.PORT || 3000;
 
+console.log('🚀 Starting server in', dev ? 'development' : 'production', 'mode');
+console.log('🌐 Environment check:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: port,
+  DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT_SET',
+  CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY ? 'SET' : 'NOT_SET',
+  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ? 'SET' : 'NOT_SET'
+});
+
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
-const prisma = new PrismaClient();
+
+// Initialize Prisma with better error handling
+let prisma;
+try {
+  prisma = new PrismaClient({
+    log: dev ? ['query', 'info', 'warn', 'error'] : ['error'],
+  });
+  console.log('✅ Prisma client initialized');
+} catch (error) {
+  console.error('❌ Failed to initialize Prisma client:', error);
+  process.exit(1);
+}
 
 app.prepare().then(() => {
+  console.log('✅ Next.js app prepared');
+  
   const server = createServer(async (req, res) => {
     try {
       const parsedUrl = parse(req.url, true);
       await handle(req, res, parsedUrl);
     } catch (err) {
-      console.error('Error occurred handling', req.url, err);
+      console.error('❌ Error occurred handling', req.url, {
+        error: err instanceof Error ? err.stack || err.message : err,
+        method: req.method,
+        url: req.url,
+        timestamp: new Date().toISOString()
+      });
       res.statusCode = 500;
       res.end('internal server error');
     }
@@ -33,6 +60,8 @@ app.prepare().then(() => {
       methods: ["GET", "POST"],
     },
   });
+
+  console.log('✅ Socket.IO server initialized');
 
   // Store latest transcripts in memory
   const debateTranscripts = {};
@@ -48,13 +77,22 @@ app.prepare().then(() => {
         // Notify others (optional, can be kept or removed)
         socket.to(`debate_${debateId}`).emit('user_joined', { userId, role });
       } catch (error) {
-        console.error('Error joining debate:', error);
+        console.error('❌ Error joining debate:', {
+          error: error instanceof Error ? error.stack || error.message : error,
+          debateId,
+          userId,
+          role
+        });
         socket.emit('error', { message: 'Failed to join debate' });
       }
     });
 
     socket.on('start_debate', async ({ debateId }) => {
       try {
+        if (!prisma) {
+          throw new Error('Database not available');
+        }
+
         // Set startTime and status in DB
         const now = new Date();
         const debate = await prisma.debate.update({
@@ -116,7 +154,10 @@ app.prepare().then(() => {
               delete debateTranscripts[debateId];
               
             } catch (aiErr) {
-              console.error(`❌ AI feedback error for debate ${debateId}:`, aiErr);
+              console.error(`❌ AI feedback error for debate ${debateId}:`, {
+                error: aiErr instanceof Error ? aiErr.stack || aiErr.message : aiErr,
+                errorType: aiErr?.constructor?.name || 'Unknown'
+              });
               
               // Send error feedback to clients
               const errorFeedback = {
@@ -135,7 +176,10 @@ app.prepare().then(() => {
             }
             
           } catch (dbErr) {
-            console.error(`❌ Database error ending debate ${debateId}:`, dbErr);
+            console.error(`❌ Database error ending debate ${debateId}:`, {
+              error: dbErr instanceof Error ? dbErr.stack || dbErr.message : dbErr,
+              errorType: dbErr?.constructor?.name || 'Unknown'
+            });
             io.to(`debate_${debateId}`).emit('error', { 
               message: 'Failed to end debate properly' 
             });
@@ -143,13 +187,21 @@ app.prepare().then(() => {
         }, debate.duration * 1000);
         
       } catch (err) {
-        console.error('Error starting debate:', err);
+        console.error('❌ Error starting debate:', {
+          error: err instanceof Error ? err.stack || err.message : err,
+          debateId,
+          errorType: err?.constructor?.name || 'Unknown'
+        });
         socket.emit('error', { message: 'Failed to start debate' });
       }
     });
 
     socket.on('send_message', async ({ debateId, userId, content, role }) => {
       try {
+        if (!prisma) {
+          throw new Error('Database not available');
+        }
+
         // Prevent messages if debate is completed
         const debate = await prisma.debate.findUnique({ where: { id: debateId } });
         if (debate.status === 'completed') {
@@ -172,7 +224,13 @@ app.prepare().then(() => {
           createdAt: message.createdAt,
         });
       } catch (error) {
-        console.error('Error sending message:', error);
+        console.error('❌ Error sending message:', {
+          error: error instanceof Error ? error.stack || error.message : error,
+          debateId,
+          userId,
+          role,
+          errorType: error?.constructor?.name || 'Unknown'
+        });
         socket.emit('error', { message: 'Failed to send message' });
       }
     });
@@ -182,7 +240,7 @@ app.prepare().then(() => {
         io.to(`debate_${debateId}`).emit('timer_started', { duration });
         console.log(`Timer started for debate ${debateId}: ${duration}s`);
       } catch (error) {
-        console.error('Error starting timer:', error);
+        console.error('❌ Error starting timer:', error);
       }
     });
 
@@ -208,10 +266,27 @@ app.prepare().then(() => {
   });
 
   server.listen(port, (err) => {
-    if (err) throw err;
+    if (err) {
+      console.error('❌ Server failed to start:', err);
+      throw err;
+    }
     console.log(`🚀 Server ready on http://${hostname}:${port}`);
     console.log(`🔌 Socket.IO server ready on path: /api/socket/io`);
   });
+
+  // Test database connection
+  if (prisma) {
+    prisma.$connect()
+      .then(() => {
+        console.log('✅ Database connected successfully in server.js');
+      })
+      .catch((error) => {
+        console.error('❌ Database connection failed in server.js:', error);
+      });
+  }
+}).catch((error) => {
+  console.error('❌ Failed to prepare Next.js app:', error);
+  process.exit(1);
 });
 
 // Enhanced AI feedback function with better error handling
@@ -260,6 +335,7 @@ Respond ONLY in valid JSON with this exact format:
 
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) {
+      console.error('❌ Missing OPENROUTER_API_KEY environment variable');
       throw new Error('Missing OPENROUTER_API_KEY environment variable');
     }
 
@@ -285,6 +361,11 @@ Respond ONLY in valid JSON with this exact format:
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('❌ OpenRouter API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
       throw new Error(`OpenRouter API error ${response.status}: ${errorText}`);
     }
 
@@ -326,7 +407,10 @@ Respond ONLY in valid JSON with this exact format:
     }
     
   } catch (error) {
-    console.error('❌ getAIFeedback error:', error);
+    console.error('❌ getAIFeedback error:', {
+      error: error instanceof Error ? error.stack || error.message : error,
+      errorType: error?.constructor?.name || 'Unknown'
+    });
     return {
       error: error.message || 'Unknown error',
       message: 'Failed to generate AI feedback',
