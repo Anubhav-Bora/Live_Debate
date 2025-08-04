@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { ensureUserExists } from "@/lib/userSync";
 
 function generateCode(length: number): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -71,12 +72,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Debate topic is required." }, { status: 400 });
     }
 
-    const user = await prisma.user.findUnique({
-       where: { clerkId: userId }
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    // Ensure user exists, create if not found
+    let user;
+    try {
+      user = await ensureUserExists(userId);
+    } catch (syncError) {
+      console.error("Error syncing user from Clerk:", syncError);
+      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
     }
 
     // Build the complete debate data object with all fields
