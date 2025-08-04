@@ -1,3 +1,4 @@
 {
-  "/api/debates/route": "app/api/debates/route.js"
+  "/api/debates/route": "app/api/debates/route.js",
+  "/page": "app/page.js"
 }

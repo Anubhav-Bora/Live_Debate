@@ -1,5 +1,50 @@
 {
-  "node": {},
+  "node": {
+    "7f0029382bbbe2b8fa395fbd6a4c6d804b669c6998": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fworkspace%2Fnode_modules%2F%40clerk%2Fnextjs%2Fdist%2Fesm%2Fapp-router%2Fkeyless-actions.js%22%2C%5B%7B%22id%22%3A%227f0029382bbbe2b8fa395fbd6a4c6d804b669c6998%22%2C%22exportedName%22%3A%22createOrReadKeylessAction%22%7D%2C%7B%22id%22%3A%227f18c35fad2e85eee0e2d96d0a7fdc648f78f6c7da%22%2C%22exportedName%22%3A%22deleteKeylessAction%22%7D%2C%7B%22id%22%3A%227fa0b15ccc1e9020a833106d12f8552d250d9fc011%22%2C%22exportedName%22%3A%22syncKeylessConfigAction%22%7D%5D%5D%2C%5B%22%2Fworkspace%2Fnode_modules%2F%40clerk%2Fnextjs%2Fdist%2Fesm%2Fapp-router%2Fserver-actions.js%22%2C%5B%7B%22id%22%3A%227f9d81bd909d20ddb56066c84ba35eb9a94af747c6%22%2C%22exportedName%22%3A%22invalidateCacheAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "7f18c35fad2e85eee0e2d96d0a7fdc648f78f6c7da": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fworkspace%2Fnode_modules%2F%40clerk%2Fnextjs%2Fdist%2Fesm%2Fapp-router%2Fkeyless-actions.js%22%2C%5B%7B%22id%22%3A%227f0029382bbbe2b8fa395fbd6a4c6d804b669c6998%22%2C%22exportedName%22%3A%22createOrReadKeylessAction%22%7D%2C%7B%22id%22%3A%227f18c35fad2e85eee0e2d96d0a7fdc648f78f6c7da%22%2C%22exportedName%22%3A%22deleteKeylessAction%22%7D%2C%7B%22id%22%3A%227fa0b15ccc1e9020a833106d12f8552d250d9fc011%22%2C%22exportedName%22%3A%22syncKeylessConfigAction%22%7D%5D%5D%2C%5B%22%2Fworkspace%2Fnode_modules%2F%40clerk%2Fnextjs%2Fdist%2Fesm%2Fapp-router%2Fserver-actions.js%22%2C%5B%7B%22id%22%3A%227f9d81bd909d20ddb56066c84ba35eb9a94af747c6%22%2C%22exportedName%22%3A%22invalidateCacheAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "7fa0b15ccc1e9020a833106d12f8552d250d9fc011": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fworkspace%2Fnode_modules%2F%40clerk%2Fnextjs%2Fdist%2Fesm%2Fapp-router%2Fkeyless-actions.js%22%2C%5B%7B%22id%22%3A%227f0029382bbbe2b8fa395fbd6a4c6d804b669c6998%22%2C%22exportedName%22%3A%22createOrReadKeylessAction%22%7D%2C%7B%22id%22%3A%227f18c35fad2e85eee0e2d96d0a7fdc648f78f6c7da%22%2C%22exportedName%22%3A%22deleteKeylessAction%22%7D%2C%7B%22id%22%3A%227fa0b15ccc1e9020a833106d12f8552d250d9fc011%22%2C%22exportedName%22%3A%22syncKeylessConfigAction%22%7D%5D%5D%2C%5B%22%2Fworkspace%2Fnode_modules%2F%40clerk%2Fnextjs%2Fdist%2Fesm%2Fapp-router%2Fserver-actions.js%22%2C%5B%7B%22id%22%3A%227f9d81bd909d20ddb56066c84ba35eb9a94af747c6%22%2C%22exportedName%22%3A%22invalidateCacheAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    },
+    "7f9d81bd909d20ddb56066c84ba35eb9a94af747c6": {
+      "workers": {
+        "app/page": {
+          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2Fworkspace%2Fnode_modules%2F%40clerk%2Fnextjs%2Fdist%2Fesm%2Fapp-router%2Fkeyless-actions.js%22%2C%5B%7B%22id%22%3A%227f0029382bbbe2b8fa395fbd6a4c6d804b669c6998%22%2C%22exportedName%22%3A%22createOrReadKeylessAction%22%7D%2C%7B%22id%22%3A%227f18c35fad2e85eee0e2d96d0a7fdc648f78f6c7da%22%2C%22exportedName%22%3A%22deleteKeylessAction%22%7D%2C%7B%22id%22%3A%227fa0b15ccc1e9020a833106d12f8552d250d9fc011%22%2C%22exportedName%22%3A%22syncKeylessConfigAction%22%7D%5D%5D%2C%5B%22%2Fworkspace%2Fnode_modules%2F%40clerk%2Fnextjs%2Fdist%2Fesm%2Fapp-router%2Fserver-actions.js%22%2C%5B%7B%22id%22%3A%227f9d81bd909d20ddb56066c84ba35eb9a94af747c6%22%2C%22exportedName%22%3A%22invalidateCacheAction%22%7D%5D%5D%5D&__client_imported__=true!",
+          "async": false
+        }
+      },
+      "layer": {
+        "app/page": "action-browser"
+      }
+    }
+  },
   "edge": {},
   "encryptionKey": "QlmrX81Tay7vwUrl3TOALPbrXIPjwogAUC5MhqKKy8k="
 }
