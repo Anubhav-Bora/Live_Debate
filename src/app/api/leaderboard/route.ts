@@ -36,13 +36,6 @@ export async function GET(req: Request) {
             persuasiveness: true,
           },
         },
-        userBadges: {
-          where: {
-            earnedAt: {
-              gte: dateFilter,
-            },
-          },
-        },
         _count: {
           select: {
             debatesPro: {
@@ -64,7 +57,23 @@ export async function GET(req: Request) {
       },
     });
 
-    // Step 2: Calculate average score per user
+    // Step 2: Get badge counts separately
+    const userIds = users.map(user => user.id);
+    const badgeCounts = await prisma.userBadge.groupBy({
+      by: ['userId'],
+      where: {
+        userId: { in: userIds },
+        earnedAt: { gte: dateFilter }
+      },
+      _count: { id: true }
+    });
+
+    // Create a map for quick lookup
+    const badgeCountMap = new Map(
+      badgeCounts.map(item => [item.userId, item._count.id])
+    );
+
+    // Step 3: Calculate average score per user
     const formatted = users
       .map((user) => {
         const scoreCount = user.scores.length;
@@ -79,10 +88,10 @@ export async function GET(req: Request) {
           username: user.username,
           totalScore: Number(totalAverage.toFixed(2)),
           debateCount: user._count.debatesPro + user._count.debatesCon,
-          badges: user.userBadges.length,
+          badges: badgeCountMap.get(user.id) || 0,
         };
       })
-      .sort((a, b) => b.totalScore - a.totalScore); // Step 3: Sort in JS
+      .sort((a, b) => b.totalScore - a.totalScore); // Step 4: Sort in JS
 
     return NextResponse.json(formatted);
   } catch (error) {

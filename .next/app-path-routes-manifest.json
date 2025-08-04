@@ -1,0 +1,23 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/api/ai-feedback/route": "/api/ai-feedback",
+  "/api/analyze/route": "/api/analyze",
+  "/api/debates/[id]/messages/route": "/api/debates/[id]/messages",
+  "/api/debates/[id]/route": "/api/debates/[id]",
+  "/api/debates/route": "/api/debates",
+  "/api/generate-topic/route": "/api/generate-topic",
+  "/api/leaderboard/route": "/api/leaderboard",
+  "/api/sync-user/route": "/api/sync-user",
+  "/api/users/[userId]/route": "/api/users/[userId]",
+  "/api/users/route": "/api/users",
+  "/api/vote/route": "/api/vote",
+  "/favicon.ico/route": "/favicon.ico",
+  "/debates/[id]/page": "/debates/[id]",
+  "/debates/create/page": "/debates/create",
+  "/page": "/",
+  "/leaderboard/page": "/leaderboard",
+  "/debates/page": "/debates",
+  "/sign-in/[[...sign-in]]/page": "/sign-in/[[...sign-in]]",
+  "/sign-up/[[...sign-up]]/page": "/sign-up/[[...sign-up]]",
+  "/profile/[userId]/page": "/profile/[userId]"
+}
