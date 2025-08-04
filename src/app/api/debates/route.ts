@@ -62,7 +62,7 @@ export async function GET() {
 export async function POST(req: Request) {
   let userId: string | undefined;
   let topic: string | undefined;
-  let requestBody: any;
+  let requestBody: unknown;
   
   try {
     console.log('🚀 POST /api/debates - Starting debate creation');
@@ -70,18 +70,25 @@ export async function POST(req: Request) {
     // Parse request body
     try {
       requestBody = await req.json();
+      
+      // Type guard for request body
+      if (!requestBody || typeof requestBody !== 'object') {
+        throw new Error('Request body must be an object');
+      }
+      
+      const bodyObj = requestBody as Record<string, unknown>;
       console.log('📥 POST /api/debates - Request body parsed:', { 
-        topic: requestBody.topic, 
-        duration: requestBody.duration, 
-        isPublic: requestBody.isPublic,
-        proDisplayName: requestBody.proDisplayName 
+        topic: bodyObj.topic, 
+        duration: bodyObj.duration, 
+        isPublic: bodyObj.isPublic,
+        proDisplayName: bodyObj.proDisplayName 
       });
     } catch (parseError) {
       console.error('❌ POST /api/debates - Failed to parse request body:', parseError);
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
-    const body: DebateRequestBody = requestBody;
+    const body: DebateRequestBody = requestBody as DebateRequestBody;
     topic = body.topic;
     const { duration, isPublic, proDisplayName } = body;
     
