@@ -62,7 +62,7 @@ export async function GET() {
 export async function POST(req: Request) {
   let userId: string | undefined;
   let topic: string | undefined;
-  let requestBody: unknown;
+  let requestBody: DebateRequestBody;
   
   try {
     console.log('🚀 POST /api/debates - Starting debate creation');
