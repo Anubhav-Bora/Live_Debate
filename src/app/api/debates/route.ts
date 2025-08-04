@@ -62,7 +62,7 @@ export async function GET() {
 export async function POST(req: Request) {
   let userId: string | undefined;
   let topic: string | undefined;
-  let requestBody: DebateRequestBody;
+  let requestBody: DebateRequestBody | undefined;
   
   try {
     console.log('🚀 POST /api/debates - Starting debate creation');
@@ -81,6 +81,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
 
+    if (!requestBody) {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+    
     const body: DebateRequestBody = requestBody;
     topic = body.topic;
     const { duration, isPublic, proDisplayName } = body;
