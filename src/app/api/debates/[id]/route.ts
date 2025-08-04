@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ensureUserExists } from "@/lib/userSync";
 
 // Define types
 interface ScoreData {
@@ -60,10 +61,13 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({ where: { clerkId: userId } });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    // Ensure user exists, create if not found
+    let user;
+    try {
+      user = await ensureUserExists(userId);
+    } catch (syncError) {
+      console.error("Error syncing user from Clerk:", syncError);
+      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
     }
 
     const debate = await prisma.debate.findUnique({ where: { id } });
@@ -309,10 +313,13 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({ where: { clerkId: userId } });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    // Ensure user exists, create if not found
+    let user;
+    try {
+      user = await ensureUserExists(userId);
+    } catch (syncError) {
+      console.error("Error syncing user from Clerk:", syncError);
+      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
     }
 
     const debate = await prisma.debate.findUnique({
@@ -356,10 +363,13 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({ where: { clerkId: userId } });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    // Ensure user exists, create if not found
+    let user;
+    try {
+      user = await ensureUserExists(userId);
+    } catch (syncError) {
+      console.error("Error syncing user from Clerk:", syncError);
+      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
     }
 
     const debate = await prisma.debate.findUnique({
