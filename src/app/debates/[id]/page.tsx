@@ -108,6 +108,13 @@ export default function DebatePage() {
           const data = await res.json()
           setDebate(data)
           setDebateStatus(data.status || "waiting")
+          
+          // Load AI feedback if debate is already completed
+          if (data.status === "completed" && data.aiFeedback) {
+            setAiFeedback(data.aiFeedback)
+            console.log("✅ Loaded existing AI feedback:", data.aiFeedback)
+          }
+          
           if (user?.id) {
             if (data.proUser?.clerkId === user.id) {
               setRole("pro")
@@ -130,7 +137,11 @@ export default function DebatePage() {
   }, [id, user?.id])
 
   useEffect(() => {
-    if (!socket) return
+    if (!socket || !id || !user?.id) return
+
+    // Join the debate room to receive real-time updates
+    socket.emit("join_debate", { debateId: id, userId: user.id, role })
+    console.log(`🔌 Joined debate room: debate_${id} as ${role}`)
 
     const onStarted = ({ duration }: { duration: number }) => {
       console.log("✅ Debate started:", { duration })
@@ -176,7 +187,7 @@ export default function DebatePage() {
       socket.off("debate_feedback", onFeedback)
       socket.off("error", onError)
     }
-  }, [socket, debateStatus])
+  }, [socket, debateStatus, id, user?.id, role])
 
   useEffect(() => {
     if (debateStatus === "completed" && feedbackLoading && !aiFeedback) {

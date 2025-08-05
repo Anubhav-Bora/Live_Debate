@@ -161,9 +161,11 @@ export default function DebateRoom({
   }, [debateStatus, startTime, fetchedDuration]);
 
   useEffect(() => {
-    // Join the debate room on mount if socket is available and user is pro or con
-    if (socket && debateId && (isPro || isCon)) {
-      socket.emit("join_debate", { debateId, userId, role: isPro ? "pro" : "con" });
+    // Join the debate room on mount if socket is available
+    if (socket && debateId && userId) {
+      const userRole = isPro ? "pro" : isCon ? "con" : "viewer";
+      socket.emit("join_debate", { debateId, userId, role: userRole });
+      console.log(`🔌 DebateRoom joined debate room: debate_${debateId} as ${userRole}`);
     }
   }, [socket, debateId, userId, isPro, isCon]);
 
