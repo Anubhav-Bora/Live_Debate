@@ -86,7 +86,7 @@ export default function DebatePage() {
   const [role, setRole] = useState<"pro" | "con" | "viewer">("viewer")
   const [joinCode, setJoinCode] = useState("")
   const [loading, setLoading] = useState(true)
-  const { socket, isConnected } = useSocket()
+  const { socket, isConnected, connectionError } = useSocket()
   const [debateStatus, setDebateStatus] = useState<string>("waiting")
   const [timer, setTimer] = useState<number | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -293,8 +293,31 @@ export default function DebatePage() {
       toast.error("Socket not connected. Please refresh the page.")
       return
     }
+    
+    if (!debate?.proUser || !debate?.conUser) {
+      toast.error("Both Pro and Con participants must join before starting the debate.")
+      return
+    }
+    
     setStartLoading(true);
-    socket.emit("start_debate", { debateId: id })
+    console.log(`🚀 Starting debate ${id} with duration ${debate.duration}s`);
+    
+    // Set up a timeout to handle potential server issues
+    const startTimeout = setTimeout(() => {
+      setStartLoading(false);
+      toast.error("Debate start timed out. Please try again.");
+    }, 10000);
+    
+    // Listen for the debate_started event
+    const onDebateStarted = ({ duration }: { duration: number }) => {
+      clearTimeout(startTimeout);
+      setStartLoading(false);
+      toast.success("Debate started successfully!");
+      socket.off("debate_started", onDebateStarted);
+    };
+    
+    socket.on("debate_started", onDebateStarted);
+    socket.emit("start_debate", { debateId: id });
   }
 
   const handleRemoveParticipant = async () => {
@@ -498,6 +521,45 @@ export default function DebatePage() {
             )}
           </div>
         </motion.div>
+        
+        {/* Connection Status Indicator */}
+        {connectionError && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <GlowCard className="bg-red-500/10 border-red-500/30">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                <div>
+                  <div className="text-red-300 font-medium">Connection Issues</div>
+                  <div className="text-red-200 text-sm">{connectionError}</div>
+                  <div className="text-red-200 text-xs mt-1">Timer and real-time features may not work properly.</div>
+                </div>
+              </div>
+            </GlowCard>
+          </motion.div>
+        )}
+        
+        {!isConnected && !connectionError && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <GlowCard className="bg-yellow-500/10 border-yellow-500/30">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+                <div>
+                  <div className="text-yellow-300 font-medium">Connecting...</div>
+                  <div className="text-yellow-200 text-sm">Establishing real-time connection for timer and chat features.</div>
+                </div>
+              </div>
+            </GlowCard>
+          </motion.div>
+        )}
+        
         {/* Debug Info for Development */}
         {isDev && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6">

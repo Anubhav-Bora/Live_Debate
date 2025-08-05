@@ -1,16 +1,16 @@
 const { createServer } = require('http');
 const { parse } = require('url');
 const next = require('next');
-const { Server: SocketIOServer } = require('socket.io');
+const { Server } = require('socket.io');
 const { PrismaClient } = require('@prisma/client');
 const fetch = (...args) => import('node-fetch').then(mod => mod.default(...args));
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = 'localhost';
+const app = next({ dev });
+const handle = app.getRequestHandler();
 const port = process.env.PORT || 3000;
 
-console.log('🚀 Starting server in', dev ? 'development' : 'production', 'mode');
-console.log('🌐 Environment check:', {
+console.log('🚀 Server starting with environment:', {
   NODE_ENV: process.env.NODE_ENV,
   PORT: port,
   DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT_SET',
@@ -18,19 +18,16 @@ console.log('🌐 Environment check:', {
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ? 'SET' : 'NOT_SET'
 });
 
-const app = next({ dev, hostname, port });
-const handle = app.getRequestHandler();
-
 // Initialize Prisma with better error handling
 let prisma;
 try {
   prisma = new PrismaClient({
     log: dev ? ['query', 'info', 'warn', 'error'] : ['error'],
   });
-  console.log('✅ Prisma client initialized');
+  console.log('✅ Database connection initialized');
 } catch (error) {
-  console.error('❌ Failed to initialize Prisma client:', error);
-  process.exit(1);
+  console.error('❌ Failed to initialize database:', error);
+  prisma = null;
 }
 
 // Store debate timeouts to clear them when needed
@@ -59,12 +56,17 @@ app.prepare().then(() => {
   });
 
   // Initialize Socket.IO
-  const io = new SocketIOServer(server, {
+  const io = new Server(server, {
     path: '/api/socket.io',
     cors: {
       origin: "*",
-      methods: ["GET", "POST"],
+      methods: ["GET", "POST"]
     },
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    upgradeTimeout: 30000,
+    allowEIO3: true,
   });
 
   console.log('✅ Socket.IO server initialized');
@@ -265,7 +267,7 @@ app.prepare().then(() => {
       console.error('❌ Server failed to start:', err);
       throw err;
     }
-    console.log(`🚀 Server ready on http://${hostname}:${port}`);
+    console.log(`🚀 Server ready on http://localhost:${port}`);
     console.log(`🔌 Socket.IO server ready on path: /api/socket/io`);
   });
 
