@@ -1,5 +1,6 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       allowedOrigins: ["localhost:3000", "127.0.0.1:3000"]
@@ -23,7 +24,7 @@ const nextConfig = {
     ]
   },
   // Ensure WebRTC and Socket.IO work properly
-  webpack: (config, { isServer }) => {
+  webpack: (config: any, { isServer }: { isServer: boolean }) => {
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,

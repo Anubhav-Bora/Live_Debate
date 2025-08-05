@@ -309,7 +309,7 @@ export default function DebatePage() {
     }, 10000);
     
     // Listen for the debate_started event
-    const onDebateStarted = ({ duration }: { duration: number }) => {
+    const onDebateStarted = () => {
       clearTimeout(startTimeout);
       setStartLoading(false);
       toast.success("Debate started successfully!");
