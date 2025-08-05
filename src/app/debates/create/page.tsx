@@ -36,6 +36,19 @@ export default function CreateDebatePage() {
   const [loading, setLoading] = useState(false)
   const [createdDebate, setCreatedDebate] = useState<Debate | null>(null)
   const [displayName, setDisplayName] = useState("");
+  const [debugInfo, setDebugInfo] = useState<any>(null)
+
+  // Debug function for development
+  const fetchDebugInfo = async () => {
+    try {
+      const res = await fetch('/api/debug/user')
+      const data = await res.json()
+      setDebugInfo(data)
+      console.log('Debug info:', data)
+    } catch (error) {
+      console.error('Failed to fetch debug info:', error)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,6 +65,12 @@ export default function CreateDebatePage() {
       return
     }
 
+    // Additional validation for user authentication
+    if (!user || !user.id) {
+      toast.error("Authentication error. Please sign out and sign in again.")
+      return
+    }
+
     const minutesNum = minutes || 0
     const secondsNum = seconds || 0
     const totalSeconds = minutesNum * 60 + secondsNum
@@ -65,6 +84,12 @@ export default function CreateDebatePage() {
 
     setLoading(true)
     try {
+      console.log('Creating debate with user:', {
+        userId: user.id,
+        email: user.emailAddresses?.[0]?.emailAddress,
+        displayName: displayName.trim()
+      })
+
       const res = await fetch("/api/debates", {
         method: "POST",
         headers: {
@@ -77,17 +102,50 @@ export default function CreateDebatePage() {
           proDisplayName: displayName,
         }),
       })
+      
       if (res.ok) {
         const data: Debate = await res.json()
         setCreatedDebate(data)
         toast.success("Debate created successfully!")
+        
+        // Log successful creation
+        console.log('Debate created successfully:', {
+          debateId: data.id,
+          topic: topic.substring(0, 50),
+          displayName: displayName.trim()
+        })
       } else {
         const errorData = await res.json()
-        toast.error(errorData.error || "Failed to create debate")
+        console.error('Debate creation failed:', {
+          status: res.status,
+          error: errorData,
+          user: {
+            id: user.id,
+            email: user.emailAddresses?.[0]?.emailAddress
+          }
+        })
+        
+        // Show detailed error message
+        if (errorData.details) {
+          toast.error(`${errorData.error}\n${errorData.details}`)
+        } else {
+          toast.error(errorData.error || "Failed to create debate")
+        }
+        
+        // Handle specific error cases
+        if (res.status === 401) {
+          toast.error("Please sign out and sign in again", {
+            duration: 5000,
+            action: {
+              label: "Sign Out",
+              onClick: () => window.location.href = "/sign-out"
+            }
+          })
+        }
       }
     } catch (err) {
-      console.error(err)
-      toast.error("An unexpected error occurred")
+      console.error('Unexpected error creating debate:', err)
+      toast.error("An unexpected error occurred. Please check your internet connection and try again.")
     } finally {
       setLoading(false)
     }
@@ -382,6 +440,61 @@ export default function CreateDebatePage() {
               </NeonButton>
             </CardFooter>
           </GlowCard>
+
+          {/* Debug Panel for Development */}
+          {process.env.NODE_ENV === 'development' && (
+            <GlowCard className="mt-4" glowColor="rgba(255, 165, 0, 0.3)">
+              <CardHeader>
+                <CardTitle className="text-lg font-bold text-orange-300">Debug Panel</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <NeonButton 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={fetchDebugInfo}
+                    className="border-orange-500 text-orange-300"
+                  >
+                    Check Auth Status
+                  </NeonButton>
+                </div>
+                
+                {debugInfo && (
+                  <div className="bg-gray-900/50 p-4 rounded-lg">
+                    <h4 className="text-orange-300 font-semibold mb-2">Authentication Status:</h4>
+                    <div className="text-sm text-gray-300 space-y-1">
+                      <div>✓ Is Authenticated: {debugInfo.auth?.isAuthenticated ? '✅ Yes' : '❌ No'}</div>
+                      <div>✓ Clerk User ID: {debugInfo.auth?.clerkUserId || '❌ None'}</div>
+                      <div>✓ Database Connected: {debugInfo.database?.connected ? '✅ Yes' : '❌ No'}</div>
+                      <div>✓ User in Database: {debugInfo.database?.userExists ? '✅ Yes' : '❌ No'}</div>
+                      {debugInfo.database?.userDetails && (
+                        <div className="mt-2 pl-4 border-l border-orange-500">
+                          <div>Username: {debugInfo.database.userDetails.username}</div>
+                          <div>Email: {debugInfo.database.userDetails.email}</div>
+                          <div>User ID: {debugInfo.database.userDetails.id}</div>
+                        </div>
+                      )}
+                      {debugInfo.database?.error && (
+                        <div className="text-red-400 mt-2">
+                          Error: {debugInfo.database.error}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-gray-900/50 p-4 rounded-lg">
+                  <h4 className="text-orange-300 font-semibold mb-2">Frontend User Data:</h4>
+                  <div className="text-sm text-gray-300 space-y-1">
+                    <div>✓ User Object: {user ? '✅ Present' : '❌ Missing'}</div>
+                    <div>✓ User ID: {user?.id || '❌ None'}</div>
+                    <div>✓ Primary Email: {user?.emailAddresses?.[0]?.emailAddress || '❌ None'}</div>
+                    <div>✓ Display Name: {displayName.trim() || '❌ Empty'}</div>
+                  </div>
+                </div>
+              </CardContent>
+            </GlowCard>
+          )}
         </motion.div>
       </div>
     </div>

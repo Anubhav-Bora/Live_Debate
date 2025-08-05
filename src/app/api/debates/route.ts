@@ -96,22 +96,38 @@ export async function POST(req: Request) {
       userId = authSession.userId || undefined;
       console.log('🔐 POST /api/debates - Auth result:', { 
         hasUserId: !!userId, 
-        userIdLength: userId?.length || 0 
+        userIdLength: userId?.length || 0,
+        isSignedIn: !!authSession.userId 
       });
     } catch (authError) {
       console.error('❌ POST /api/debates - Authentication error:', authError);
-      return NextResponse.json({ error: "Authentication failed" }, { status: 500 });
+      return NextResponse.json({ 
+        error: "Authentication failed. Please sign in again.", 
+        details: "Unable to verify your identity" 
+      }, { status: 500 });
     }
 
     if (!userId) {
       console.log('❌ POST /api/debates - No user ID found in auth session');
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ 
+        error: "Authentication required. Please sign in to create a debate.", 
+        details: "No valid user session found" 
+      }, { status: 401 });
     }
 
     // Validate topic
     if (!topic || typeof topic !== 'string' || topic.trim().length < 1) {
       console.log('❌ POST /api/debates - Invalid topic:', { topic, type: typeof topic });
       return NextResponse.json({ error: "Debate topic is required." }, { status: 400 });
+    }
+
+    // Validate display name
+    if (!proDisplayName || typeof proDisplayName !== 'string' || proDisplayName.trim().length < 1) {
+      console.log('❌ POST /api/debates - Invalid display name:', { proDisplayName, type: typeof proDisplayName });
+      return NextResponse.json({ 
+        error: "Display name is required.", 
+        details: "Please enter your display name for the debate" 
+      }, { status: 400 });
     }
 
     // Ensure user exists
@@ -122,7 +138,8 @@ export async function POST(req: Request) {
       console.log('✅ POST /api/debates - User ensured:', { 
         id: user.id, 
         username: user.username, 
-        clerkId: user.clerkId 
+        clerkId: user.clerkId,
+        email: user.email
       });
     } catch (syncError) {
       console.error("❌ POST /api/debates - Error syncing user from Clerk:", {
@@ -130,7 +147,19 @@ export async function POST(req: Request) {
         userId,
         errorType: syncError?.constructor?.name || 'Unknown'
       });
-      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
+      return NextResponse.json({ 
+        error: "Failed to sync user account. Please try signing in again.", 
+        details: "Unable to verify user account in database" 
+      }, { status: 500 });
+    }
+
+    // Additional validation - ensure user has valid data
+    if (!user || !user.id) {
+      console.error('❌ POST /api/debates - User object is invalid:', user);
+      return NextResponse.json({ 
+        error: "Invalid user account. Please contact support.", 
+        details: "User record is incomplete" 
+      }, { status: 500 });
     }
 
     // Build debate data
@@ -141,10 +170,13 @@ export async function POST(req: Request) {
       isPublic: isPublic !== false,
       creatorId: user.id,
       proUserId: user.id,
-      proDisplayName: proDisplayName?.trim()
+      proDisplayName: proDisplayName.trim()
     };
     
-    console.log('📝 POST /api/debates - Creating debate with data:', debateData);
+    console.log('📝 POST /api/debates - Creating debate with data:', {
+      ...debateData,
+      creatorDetails: { id: user.id, username: user.username, email: user.email }
+    });
 
     // Create debate
     let newDebate;
@@ -159,16 +191,31 @@ export async function POST(req: Request) {
       console.log('✅ POST /api/debates - Debate created successfully:', { 
         id: newDebate.id, 
         topic: newDebate.topic,
-        joinCodeCon: newDebate.joinCodeCon 
+        joinCodeCon: newDebate.joinCodeCon,
+        creatorId: newDebate.creatorId,
+        proUserId: newDebate.proUserId
       });
     } catch (dbError) {
       console.error('❌ POST /api/debates - Database error creating debate:', {
         error: dbError instanceof Error ? dbError.stack || dbError.message : dbError,
         errorType: dbError?.constructor?.name || 'Unknown',
         debateData,
+        userInfo: { id: user.id, clerkId: user.clerkId },
         timestamp: new Date().toISOString()
       });
-      return NextResponse.json({ error: "Database error creating debate" }, { status: 500 });
+      
+      // Check if it's a foreign key constraint error
+      if (dbError instanceof Error && dbError.message.includes('foreign key')) {
+        return NextResponse.json({ 
+          error: "User account error. Please sign out and sign in again.", 
+          details: "Database relationship error" 
+        }, { status: 500 });
+      }
+      
+      return NextResponse.json({ 
+        error: "Database error creating debate. Please try again.", 
+        details: "Failed to save debate to database" 
+      }, { status: 500 });
     }
 
     const response = {
