@@ -35,7 +35,6 @@ export default function CreateDebatePage() {
   const [isPublic, setIsPublic] = useState(true)
   const [loading, setLoading] = useState(false)
   const [createdDebate, setCreatedDebate] = useState<Debate | null>(null)
-  const [displayName, setDisplayName] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,10 +44,6 @@ export default function CreateDebatePage() {
   const handleCreate = async () => {
     if (!topic.trim()) {
       toast.error("Topic is required")
-      return
-    }
-    if (!displayName.trim()) {
-      toast.error("Display name is required")
       return
     }
 
@@ -74,7 +69,6 @@ export default function CreateDebatePage() {
           topic,
           duration: totalSeconds,
           isPublic,
-          proDisplayName: displayName,
         }),
       })
       if (res.ok) {
@@ -233,22 +227,6 @@ export default function CreateDebatePage() {
 
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="displayName" className="text-white font-semibold">
-                    Your Display Name
-                  </Label>
-                  <Input
-                    id="displayName"
-                    value={displayName}
-                    onChange={e => setDisplayName(e.target.value)}
-                    placeholder="Enter your name as it will appear in the debate"
-                    className="bg-white/5 border-white/20 text-white placeholder:text-gray-400"
-                    required
-                  />
-                  <p className="text-sm text-gray-400">
-                    This name will be shown in the debate instead of your email or username.
-                  </p>
-                </div>
                 <div className="space-y-2">
                   <Label htmlFor="topic" className="text-white font-semibold">
                     Debate Topic
