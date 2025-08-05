@@ -16,7 +16,6 @@ interface DebateRequestBody {
   topic: string;
   duration?: number;
   isPublic?: boolean;
-  proDisplayName?: string;
 }
 
 export async function GET() {
@@ -73,8 +72,7 @@ export async function POST(req: Request) {
       console.log('📥 POST /api/debates - Request body parsed:', { 
         topic: requestBody.topic, 
         duration: requestBody.duration, 
-        isPublic: requestBody.isPublic,
-        proDisplayName: requestBody.proDisplayName 
+        isPublic: requestBody.isPublic
       });
     } catch (parseError) {
       console.error('❌ POST /api/debates - Failed to parse request body:', parseError);
@@ -86,7 +84,7 @@ export async function POST(req: Request) {
 
     const body: DebateRequestBody = requestBody;
     topic = body.topic;
-    const { duration, isPublic, proDisplayName } = body;
+    const { duration, isPublic } = body;
     
     // Check authentication
     console.log('🔐 POST /api/debates - Checking authentication');
@@ -141,7 +139,7 @@ export async function POST(req: Request) {
       isPublic: isPublic !== false,
       creatorId: user.id,
       proUserId: user.id,
-      proDisplayName: proDisplayName?.trim()
+      proDisplayName: user.email
     };
     
     console.log('📝 POST /api/debates - Creating debate with data:', debateData);
