@@ -34,7 +34,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      maxReconnectionAttempts: 5,
+      reconnectionAttempts: 5,
       forceNew: true,
     });
 
@@ -44,7 +44,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
       setConnectionError(null);
     });
 
-    socketInstance.on("disconnect", (reason) => {
+    socketInstance.on("disconnect", (reason: string) => {
       console.log("🔌 Socket disconnected:", reason);
       setIsConnected(false);
       if (reason === 'io server disconnect') {

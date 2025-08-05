@@ -200,13 +200,14 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         console.error("[VideoDebateRoom] getUserMedia error:", err);
         let errorMessage = "Could not access webcam/mic: ";
         
-        if (err.name === 'NotAllowedError') {
-          errorMessage += "Permission denied. Please allow camera and microphone access and refresh the page.";
-        } else if (err.name === 'NotFoundError') {
-          errorMessage += "No camera or microphone found. Please connect a device and refresh.";
-        } else if (err.name === 'NotReadableError') {
-          errorMessage += "Camera is already in use by another application.";
-        } else if (err.name === 'OverconstrainedError') {
+        if (err instanceof Error) {
+          if (err.name === 'NotAllowedError') {
+            errorMessage += "Permission denied. Please allow camera and microphone access and refresh the page.";
+          } else if (err.name === 'NotFoundError') {
+            errorMessage += "No camera or microphone found. Please connect a device and refresh.";
+          } else if (err.name === 'NotReadableError') {
+            errorMessage += "Camera is already in use by another application.";
+          } else if (err.name === 'OverconstrainedError') {
           errorMessage += "Camera constraints could not be satisfied. Trying fallback...";
           
           // Fallback: try without device constraints
@@ -221,11 +222,14 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
             }
             setMediaError(null);
             return;
-          } catch (fallbackErr) {
+          } catch {
             errorMessage += " Fallback also failed.";
           }
+          } else {
+            errorMessage += err.message || "Unknown error occurred.";
+          }
         } else {
-          errorMessage += err.message || "Unknown error occurred.";
+          errorMessage += "Unknown error occurred.";
         }
         
         setMediaError(errorMessage);
@@ -392,8 +396,8 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
               {mediaError.includes("Permission denied") && (
                 <div className="mt-2 text-sm">
                   <div className="font-medium">To fix this:</div>
-                  <div>1. Click the camera icon in your browser's address bar</div>
-                  <div>2. Select "Allow" for camera and microphone</div>
+                  <div>1. Click the camera icon in your browser&apos;s address bar</div>
+                  <div>2. Select &quot;Allow&quot; for camera and microphone</div>
                   <div>3. Refresh this page</div>
                 </div>
               )}
