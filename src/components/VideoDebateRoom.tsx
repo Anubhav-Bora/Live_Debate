@@ -118,9 +118,26 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
   useEffect(() => {
     if (!selectedDeviceId) return;
 
+    // Check if we're in a secure context (HTTPS or localhost)
+    const isSecureContext = window.location.protocol === 'https:' || 
+                           window.location.hostname === 'localhost' || 
+                           window.location.hostname === '127.0.0.1';
+
+    if (!isSecureContext) {
+      setMediaError("Camera access requires HTTPS. Please use a secure connection.");
+      console.error("[VideoDebateRoom] Camera access requires HTTPS in production");
+      return;
+    }
+
     console.log("[VideoDebateRoom] Auto-starting camera...");
+    
+    // Request camera permissions with better error handling
     navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: selectedDeviceId } },
+      video: { 
+        deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
       audio: true
     })
       .then((mediaStream) => {
@@ -132,8 +149,31 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         setMediaError(null);
       })
       .catch((err) => {
-        setMediaError("Could not access webcam/mic: " + err.message);
         console.error("[VideoDebateRoom] getUserMedia error:", err);
+        
+        let errorMessage = "Could not access webcam/mic: ";
+        
+        switch (err.name) {
+          case 'NotAllowedError':
+            errorMessage += "Permission denied. Please allow camera and microphone access.";
+            break;
+          case 'NotFoundError':
+            errorMessage += "No camera or microphone found.";
+            break;
+          case 'NotReadableError':
+            errorMessage += "Camera is already in use by another application.";
+            break;
+          case 'OverconstrainedError':
+            errorMessage += "Camera doesn't support the requested settings.";
+            break;
+          case 'SecurityError':
+            errorMessage += "Camera access blocked by security policy. Ensure you're using HTTPS.";
+            break;
+          default:
+            errorMessage += err.message || "Unknown error occurred.";
+        }
+        
+        setMediaError(errorMessage);
       });
   }, [selectedDeviceId]);
 
@@ -288,29 +328,71 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     <div className="flex flex-col lg:flex-row gap-6 w-full">
       <div className="flex-1">
         <div className="relative flex flex-col items-center justify-center p-4 w-full h-[400px] md:h-[500px]">
-          {mediaError && (
-            <div className="mb-4 p-2 bg-red-100 text-red-700 rounded border border-red-300 w-full text-center">
-              {mediaError}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-4">Video Debate Room</h3>
+            
+            {/* Connection Status */}
+            <div className="mb-4 p-3 rounded-lg bg-gray-100">
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span className="text-sm font-medium">
+                  Socket: {isConnected ? 'Connected' : 'Disconnected'}
+                </span>
+              </div>
+              {!isConnected && (
+                <p className="text-xs text-gray-600 mt-1">
+                  Reconnecting to enable timer functionality...
+                </p>
+              )}
             </div>
-          )}
 
-          {videoDevices.length > 1 && (
-            <div className="mb-4 w-full max-w-md">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Select Camera:</label>
-              <select
-                value={selectedDeviceId}
-                onChange={(e) => setSelectedDeviceId(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900"
-              >
-                {videoDevices.map((device) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Camera ${device.deviceId.slice(0, 8)}...`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+            {/* Media Error Display */}
+            {mediaError && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <div className="text-red-500 mt-0.5">⚠️</div>
+                  <div>
+                    <h4 className="font-medium text-red-800 mb-1">Camera Access Issue</h4>
+                    <p className="text-sm text-red-700 mb-2">{mediaError}</p>
+                    {mediaError.includes("HTTPS") && (
+                      <div className="text-xs text-red-600 bg-red-100 p-2 rounded">
+                        <strong>Solution:</strong> Make sure your site is served over HTTPS. 
+                        Camera access is blocked on non-secure connections for security reasons.
+                      </div>
+                    )}
+                    {mediaError.includes("Permission denied") && (
+                      <div className="text-xs text-red-600 bg-red-100 p-2 rounded">
+                        <strong>Solution:</strong> Click the camera icon in your browser's address bar 
+                        and allow camera/microphone access, then refresh the page.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
+            {/* Camera Selection */}
+            {videoDevices.length > 1 && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Select Camera:</label>
+                <select
+                  value={selectedDeviceId}
+                  onChange={(e) => setSelectedDeviceId(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-md"
+                >
+                  {videoDevices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Camera ${device.deviceId.slice(0, 8)}...`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+
+
+          </div>
+          
           <div className="relative w-full h-full flex items-center justify-center">
             {remoteStream ? (
               <video
