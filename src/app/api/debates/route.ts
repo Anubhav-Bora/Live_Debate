@@ -141,7 +141,7 @@ export async function POST(req: Request) {
       isPublic: isPublic !== false,
       creatorId: user.id,
       proUserId: user.id,
-      proDisplayName: proDisplayName?.trim() || null,
+      proDisplayName: proDisplayName?.trim()
     };
     
     console.log('📝 POST /api/debates - Creating debate with data:', debateData);
