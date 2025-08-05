@@ -26,7 +26,6 @@ type PeerInstance = {
   off(event: "iceStateChange", callback: IceStateChangeCallback): void;
   signal: (data: SignalData) => void;
   destroy: () => void;
-  // Add other methods and properties as needed
 };
 
 interface SignalData {
@@ -56,7 +55,7 @@ interface SignalEventData {
 }
 
 export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateRoomProps) {
-  const { socket } = useSocket();
+  const { socket, isConnected } = useSocket();
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [peer, setPeer] = useState<PeerInstance | null>(null);
@@ -72,6 +71,11 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const streamRef = useRef<MediaStream | null>(null);
   const peerRef = useRef<PeerInstance | null>(null);
+  
+  // NEW: Add user interaction states
+  const [userInteracted, setUserInteracted] = useState(false);
+  const [showCameraPrompt, setShowCameraPrompt] = useState(true);
+  const [isStartingCamera, setIsStartingCamera] = useState(false);
 
   // Keep refs updated
   useEffect(() => {
@@ -97,11 +101,18 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         peerRef.current.destroy();
       }
     };
-  }, []); // No dependencies - only runs on unmount
+  }, []);
 
-  // Get available video devices
+  // Get available video devices - ONLY enumerate, don't auto-start
   useEffect(() => {
-    navigator.mediaDevices.enumerateDevices()
+    // Request permissions first, then enumerate
+    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      .then(stream => {
+        // Stop the stream immediately - we just needed permissions
+        stream.getTracks().forEach(track => track.stop());
+        
+        return navigator.mediaDevices.enumerateDevices();
+      })
       .then(devices => {
         const videoInputs = devices.filter(device => device.kind === 'videoinput');
         setVideoDevices(videoInputs);
@@ -111,46 +122,75 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         );
         setSelectedDeviceId(realCamera?.deviceId || videoInputs[0]?.deviceId || "");
       })
-      .catch(err => console.error("Error enumerating devices:", err));
+      .catch(err => {
+        console.error("Error getting device permissions:", err);
+        setMediaError("Could not access camera permissions: " + err.message);
+      });
   }, []);
 
-  // Get user media with selected device - AUTO START CAMERA
-  useEffect(() => {
-    if (!selectedDeviceId) return;
+  // NEW: Manual camera start function
+  const handleStartCamera = async () => {
+    if (!selectedDeviceId) {
+      setMediaError("No camera device selected");
+      return;
+    }
 
-    console.log("[VideoDebateRoom] Auto-starting camera...");
-    navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: selectedDeviceId } },
-      audio: true
-    })
-      .then((mediaStream) => {
-        console.log("[VideoDebateRoom] Camera started successfully");
-        setStream(mediaStream);
-        if (localVideoRef.current) {
-          localVideoRef.current.srcObject = mediaStream;
+    setIsStartingCamera(true);
+    setUserInteracted(true);
+    setShowCameraPrompt(false);
+
+    try {
+      console.log("[VideoDebateRoom] Starting camera with user interaction...");
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          deviceId: { exact: selectedDeviceId },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true
         }
-        setMediaError(null);
-      })
-      .catch((err) => {
-        setMediaError("Could not access webcam/mic: " + err.message);
-        console.error("[VideoDebateRoom] getUserMedia error:", err);
       });
-  }, [selectedDeviceId]);
 
-  // Join debate room and handle signaling
+      console.log("[VideoDebateRoom] Camera started successfully");
+      setStream(mediaStream);
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = mediaStream;
+      }
+      setMediaError(null);
+    } catch (err: any) {
+      console.error("[VideoDebateRoom] getUserMedia error:", err);
+      setMediaError("Could not access camera: " + (err.message || "Unknown error"));
+    } finally {
+      setIsStartingCamera(false);
+    }
+  };
+
+  // Join debate room and handle signaling - WAIT for socket connection
   useEffect(() => {
-    if (!socket || !stream) return;
+    if (!socket || !isConnected || !stream) {
+      console.log("[VideoDebateRoom] Waiting for requirements:", {
+        socket: !!socket,
+        isConnected,
+        stream: !!stream
+      });
+      return;
+    }
 
     console.log(`[VideoDebateRoom] Joining debate room: debate_${debateId} as ${role} (${userId})`);
     socket.emit("join_debate", { debateId, userId, role });
 
+    // Reduced timeout and better error handling
     const timeout = setTimeout(() => {
       const initiator = role === "pro";
       console.log(`[VideoDebateRoom] Creating peer as ${initiator ? 'initiator' : 'receiver'}`);
 
+      // Enhanced ICE servers for production
       const iceServers = [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
         {
           urls: 'turn:openrelay.metered.ca:80',
           username: 'openrelayproject',
@@ -172,14 +212,21 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         initiator,
         trickle: false,
         stream,
-        config: { iceServers }
+        config: { 
+          iceServers,
+          iceTransportPolicy: 'all', // Allow both relay and direct connections
+        }
       }) as PeerInstance;
 
       setPeer(p);
 
       p.on("signal", (data: SignalData) => {
-        console.log("[VideoDebateRoom] Sending signal:", data);
-        socket.emit("signal", { debateId, userId, signal: data });
+        console.log("[VideoDebateRoom] Sending signal:", data.type);
+        if (socket && isConnected) {
+          socket.emit("signal", { debateId, userId, signal: data });
+        } else {
+          console.error("[VideoDebateRoom] Cannot send signal - socket not connected");
+        }
       });
 
       p.on("stream", (remoteStream: MediaStream) => {
@@ -212,11 +259,14 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
 
       p.on("iceStateChange", (state: string) => {
         console.log("[VideoDebateRoom] ICE connection state:", state);
+        if (state === 'failed' || state === 'disconnected') {
+          setConnected(false);
+        }
       });
 
       const onSignal = ({ userId: fromId, signal }: SignalEventData) => {
         if (fromId !== userId) {
-          console.log("[VideoDebateRoom] Received signal from other peer:", signal);
+          console.log("[VideoDebateRoom] Received signal from other peer:", signal.type);
           try {
             p.signal(signal);
           } catch (err) {
@@ -234,12 +284,12 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
           p.destroy();
         }
       };
-    }, 2000);
+    }, 1000); // Reduced from 2000ms
 
     return () => {
       clearTimeout(timeout);
     };
-  }, [socket, stream, debateId, userId, role]);
+  }, [socket, isConnected, stream, debateId, userId, role]);
 
   // Attach streams to video elements
   useEffect(() => {
@@ -258,17 +308,17 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
   const transcript = useSpeechRecognition(!!stream);
 
   useEffect(() => {
-    if (!socket || !debateId || !role) return;
+    if (!socket || !isConnected || !debateId || !role) return;
     socket.emit("transcript_update", {
       debateId,
       userId,
       role,
       transcript,
     });
-  }, [transcript, socket, debateId, userId, role]);
+  }, [transcript, socket, isConnected, debateId, userId, role]);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !isConnected) return;
     const onTranscriptUpdate = ({ role: updateRole, transcript: updateTranscript }: TranscriptUpdateData) => {
       if (updateRole === "pro") setProTranscript(updateTranscript);
       if (updateRole === "con") setConTranscript(updateTranscript);
@@ -277,7 +327,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     return () => {
       socket.off("transcript_update", onTranscriptUpdate);
     };
-  }, [socket]);
+  }, [socket, isConnected]);
 
   useEffect(() => {
     if (role === "pro") setProTranscript(transcript);
@@ -288,13 +338,35 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     <div className="flex flex-col lg:flex-row gap-6 w-full">
       <div className="flex-1">
         <div className="relative flex flex-col items-center justify-center p-4 w-full h-[400px] md:h-[500px]">
+          {/* Connection Status */}
+          {!isConnected && (
+            <div className="mb-4 p-2 bg-yellow-100 text-yellow-700 rounded border border-yellow-300 w-full text-center">
+              Socket disconnected - trying to reconnect...
+            </div>
+          )}
+
           {mediaError && (
             <div className="mb-4 p-2 bg-red-100 text-red-700 rounded border border-red-300 w-full text-center">
               {mediaError}
             </div>
           )}
 
-          {videoDevices.length > 1 && (
+          {/* Camera Start Prompt */}
+          {showCameraPrompt && !stream && (
+            <div className="mb-4 p-4 bg-blue-100 text-blue-700 rounded border border-blue-300 w-full text-center">
+              <h3 className="font-medium mb-2">Camera Access Required</h3>
+              <p className="text-sm mb-3">Click to start your camera for the video debate</p>
+              <button
+                onClick={handleStartCamera}
+                disabled={isStartingCamera || !selectedDeviceId}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                {isStartingCamera ? "Starting Camera..." : "Start Camera"}
+              </button>
+            </div>
+          )}
+
+          {videoDevices.length > 1 && stream && (
             <div className="mb-4 w-full max-w-md">
               <label className="block text-sm font-medium text-gray-700 mb-2">Select Camera:</label>
               <select
@@ -326,7 +398,10 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
                   <div className="text-2xl mb-2">👤</div>
                   <div className="text-lg font-medium">Waiting for opponent...</div>
                   <div className="text-sm text-gray-400 mt-2">
-                    {connected ? 'Connected - video loading...' : 'Establishing connection...'}
+                    {connected ? 'Connected - video loading...' : 
+                     !isConnected ? 'Socket connecting...' :
+                     !stream ? 'Camera not started' :
+                     'Establishing connection...'}
                   </div>
                   <div className="text-xs text-gray-500 mt-4 max-w-xs">
                     {role === 'pro'
@@ -338,32 +413,37 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
               </div>
             )}
 
-            <video
-              ref={localVideoRef}
-              autoPlay
-              muted
-              playsInline
-              className="absolute bottom-4 right-4 rounded border bg-black shadow-lg w-32 h-24 object-cover z-10"
-              style={{ border: '2px solid white' }}
-            />
+            {stream && (
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="absolute bottom-4 right-4 rounded border bg-black shadow-lg w-32 h-24 object-cover z-10"
+                style={{ border: '2px solid white' }}
+              />
+            )}
 
             <div className="absolute top-4 right-4 z-20">
               <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                connected
+                connected && isConnected
                   ? 'bg-green-500/80 text-white'
                   : 'bg-yellow-500/80 text-white'
               }`}>
-                {connected ? 'Connected' : 'Connecting...'}
+                {connected && isConnected ? 'Connected' : 
+                 !isConnected ? 'Socket Connecting...' : 'Connecting...'}
               </div>
             </div>
 
             {process.env.NODE_ENV === 'development' && (
               <div className="absolute bottom-20 left-4 z-20 bg-black/80 text-white text-xs p-2 rounded">
                 <div>Role: {role}</div>
-                <div>Connected: {connected ? 'Yes' : 'No'}</div>
+                <div>Socket Connected: {isConnected ? 'Yes' : 'No'}</div>
+                <div>Peer Connected: {connected ? 'Yes' : 'No'}</div>
                 <div>Local Stream: {stream ? 'Yes' : 'No'}</div>
                 <div>Remote Stream: {remoteStream ? 'Yes' : 'No'}</div>
                 <div>Peer: {peer ? 'Active' : 'None'}</div>
+                <div>User Interacted: {userInteracted ? 'Yes' : 'No'}</div>
               </div>
             )}
           </div>
@@ -413,7 +493,13 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         </div>
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>Status:</span>
+            <span>Socket:</span>
+            <span className={`font-medium ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+            <span>Peer:</span>
             <span className={`font-medium ${connected ? 'text-green-600' : 'text-yellow-600'}`}>
               {connected ? 'Connected' : 'Connecting...'}
             </span>
