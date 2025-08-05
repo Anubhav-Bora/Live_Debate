@@ -101,17 +101,52 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
 
   // Get available video devices
   useEffect(() => {
-    navigator.mediaDevices.enumerateDevices()
-      .then(devices => {
+    const getDevices = async () => {
+      try {
+        // First check if we have permission to enumerate devices
+        const devices = await navigator.mediaDevices.enumerateDevices();
         const videoInputs = devices.filter(device => device.kind === 'videoinput');
-        setVideoDevices(videoInputs);
-        const realCamera = videoInputs.find(device =>
-          !device.label.toLowerCase().includes('virtual') &&
-          !device.label.toLowerCase().includes('obs')
-        );
-        setSelectedDeviceId(realCamera?.deviceId || videoInputs[0]?.deviceId || "");
-      })
-      .catch(err => console.error("Error enumerating devices:", err));
+        
+        // If device labels are empty, we need permission first
+        if (videoInputs.length > 0 && !videoInputs[0].label) {
+          console.log("[VideoDebateRoom] Requesting permission to enumerate devices...");
+          try {
+            // Request permission to get device labels
+            const tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            tempStream.getTracks().forEach(track => track.stop());
+            
+            // Now get devices with labels
+            const devicesWithLabels = await navigator.mediaDevices.enumerateDevices();
+            const videoInputsWithLabels = devicesWithLabels.filter(device => device.kind === 'videoinput');
+            setVideoDevices(videoInputsWithLabels);
+            
+            const realCamera = videoInputsWithLabels.find(device =>
+              !device.label.toLowerCase().includes('virtual') &&
+              !device.label.toLowerCase().includes('obs')
+            );
+            setSelectedDeviceId(realCamera?.deviceId || videoInputsWithLabels[0]?.deviceId || "");
+          } catch (permErr) {
+            console.warn("[VideoDebateRoom] Permission denied for device enumeration:", permErr);
+            // Fall back to basic device list without labels
+            setVideoDevices(videoInputs);
+            setSelectedDeviceId(videoInputs[0]?.deviceId || "");
+          }
+        } else {
+          setVideoDevices(videoInputs);
+          const realCamera = videoInputs.find(device =>
+            !device.label.toLowerCase().includes('virtual') &&
+            !device.label.toLowerCase().includes('obs')
+          );
+          setSelectedDeviceId(realCamera?.deviceId || videoInputs[0]?.deviceId || "");
+        }
+      } catch (err) {
+        console.error("Error enumerating devices:", err);
+        // Set a default empty device ID to trigger the media request
+        setSelectedDeviceId("default");
+      }
+    };
+
+    getDevices();
   }, []);
 
   // Get user media with selected device - AUTO START CAMERA
@@ -119,22 +154,85 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     if (!selectedDeviceId) return;
 
     console.log("[VideoDebateRoom] Auto-starting camera...");
-    navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: selectedDeviceId } },
-      audio: true
-    })
-      .then((mediaStream) => {
+    
+    // Check if we're in a secure context (HTTPS or localhost)
+    const isSecureContext = window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost';
+    
+    if (!isSecureContext) {
+      setMediaError("Camera access requires HTTPS in production. Please ensure your site is served over HTTPS.");
+      return;
+    }
+
+    // Request permissions explicitly first
+    const requestMediaAccess = async () => {
+      try {
+        // First, request basic permissions
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+        
+        // Stop the basic stream
+        stream.getTracks().forEach(track => track.stop());
+        
+        // Now request with specific device
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            sampleRate: 44100
+          }
+        });
+        
         console.log("[VideoDebateRoom] Camera started successfully");
         setStream(mediaStream);
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = mediaStream;
         }
         setMediaError(null);
-      })
-      .catch((err) => {
-        setMediaError("Could not access webcam/mic: " + err.message);
+        
+      } catch (err) {
         console.error("[VideoDebateRoom] getUserMedia error:", err);
-      });
+        let errorMessage = "Could not access webcam/mic: ";
+        
+        if (err.name === 'NotAllowedError') {
+          errorMessage += "Permission denied. Please allow camera and microphone access and refresh the page.";
+        } else if (err.name === 'NotFoundError') {
+          errorMessage += "No camera or microphone found. Please connect a device and refresh.";
+        } else if (err.name === 'NotReadableError') {
+          errorMessage += "Camera is already in use by another application.";
+        } else if (err.name === 'OverconstrainedError') {
+          errorMessage += "Camera constraints could not be satisfied. Trying fallback...";
+          
+          // Fallback: try without device constraints
+          try {
+            const fallbackStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: true
+            });
+            setStream(fallbackStream);
+            if (localVideoRef.current) {
+              localVideoRef.current.srcObject = fallbackStream;
+            }
+            setMediaError(null);
+            return;
+          } catch (fallbackErr) {
+            errorMessage += " Fallback also failed.";
+          }
+        } else {
+          errorMessage += err.message || "Unknown error occurred.";
+        }
+        
+        setMediaError(errorMessage);
+      }
+    };
+
+    requestMediaAccess();
   }, [selectedDeviceId]);
 
   // Join debate room and handle signaling
@@ -291,6 +389,21 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
           {mediaError && (
             <div className="mb-4 p-2 bg-red-100 text-red-700 rounded border border-red-300 w-full text-center">
               {mediaError}
+              {mediaError.includes("Permission denied") && (
+                <div className="mt-2 text-sm">
+                  <div className="font-medium">To fix this:</div>
+                  <div>1. Click the camera icon in your browser's address bar</div>
+                  <div>2. Select "Allow" for camera and microphone</div>
+                  <div>3. Refresh this page</div>
+                </div>
+              )}
+              {mediaError.includes("HTTPS") && (
+                <div className="mt-2 text-sm">
+                  <div className="font-medium">Production Requirement:</div>
+                  <div>Camera access requires a secure HTTPS connection in production.</div>
+                  <div>Please ensure your deployment uses HTTPS.</div>
+                </div>
+              )}
             </div>
           )}
 
