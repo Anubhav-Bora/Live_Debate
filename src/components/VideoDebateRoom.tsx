@@ -159,10 +159,12 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         localVideoRef.current.srcObject = mediaStream;
       }
       setMediaError(null);
-    } catch (err: any) {
-      console.error("[VideoDebateRoom] getUserMedia error:", err);
-      setMediaError("Could not access camera: " + (err.message || "Unknown error"));
-    } finally {
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error("[VideoDebateRoom] getUserMedia error:", error);
+      setMediaError("Could not access camera: " + (error.message || "Unknown error"));
+    }
+    finally {
       setIsStartingCamera(false);
     }
   };
