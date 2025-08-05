@@ -33,8 +33,14 @@ try {
   process.exit(1);
 }
 
+// Store debate timeouts to clear them when needed
+const debateTimeouts = new Map();
+
 app.prepare().then(() => {
   console.log('✅ Next.js app prepared');
+  
+  // Clean up any orphaned debates on startup
+  cleanupOrphanedDebates();
   
   const server = createServer(async (req, res) => {
     try {
@@ -93,6 +99,17 @@ app.prepare().then(() => {
           throw new Error('Database not available');
         }
 
+        // Check if debate exists before updating
+        const existingDebate = await prisma.debate.findUnique({
+          where: { id: debateId }
+        });
+
+        if (!existingDebate) {
+          console.error(`❌ Debate ${debateId} not found when trying to start`);
+          socket.emit('error', { message: 'Debate not found' });
+          return;
+        }
+
         // Set startTime and status in DB
         const now = new Date();
         const debate = await prisma.debate.update({
@@ -103,88 +120,27 @@ app.prepare().then(() => {
         console.log(`✅ Debate ${debateId} started with duration: ${debate.duration}s`);
         io.to(`debate_${debateId}`).emit('debate_started', { startTime: now, duration: debate.duration });
         
-        // Schedule debate end
-        setTimeout(async () => {
+        // Clear any existing timeout for this debate
+        const existingTimeout = debateTimeouts.get(debateId);
+        if (existingTimeout) {
+          clearTimeout(existingTimeout);
+          console.log(`🧹 Cleared existing timeout for debate ${debateId}`);
+        }
+        
+        // Schedule debate end with proper error handling
+        const timeoutId = setTimeout(async () => {
           try {
-            const end = new Date();
-            await prisma.debate.update({
-              where: { id: debateId },
-              data: { endTime: end, status: 'completed' },
-            });
-            
-            console.log(`✅ Debate ${debateId} ended, generating AI feedback...`);
-            io.to(`debate_${debateId}`).emit('debate_ended');
-            
-            // --- ENHANCED AI FEEDBACK LOGIC ---
-            try {
-              const messages = await prisma.message.findMany({
-                where: { debateId },
-                orderBy: { createdAt: 'asc' },
-                include: {
-                  sender: {
-                    select: { username: true }
-                  }
-                }
-              });
-              
-              // Use live transcripts if available
-              const transcripts = debateTranscripts[debateId] || { pro: '', con: '' };
-              
-              console.log(`📊 Generating feedback for debate ${debateId}:`, {
-                messageCount: messages.length,
-                proTranscriptLength: transcripts.pro.length,
-                conTranscriptLength: transcripts.con.length
-              });
-              
-              // Generate AI feedback
-              const aiFeedback = await getAIFeedback(messages, transcripts);
-              
-              // Save feedback to database
-              await prisma.debate.update({
-                where: { id: debateId },
-                data: { aiFeedback },
-              });
-              
-              console.log(`✅ AI feedback generated and saved for debate ${debateId}`);
-              
-              // Emit feedback to all connected clients
-              io.to(`debate_${debateId}`).emit('debate_feedback', aiFeedback);
-              
-              // Clean up transcripts from memory
-              delete debateTranscripts[debateId];
-              
-            } catch (aiErr) {
-              console.error(`❌ AI feedback error for debate ${debateId}:`, {
-                error: aiErr instanceof Error ? aiErr.stack || aiErr.message : aiErr,
-                errorType: aiErr?.constructor?.name || 'Unknown'
-              });
-              
-              // Send error feedback to clients
-              const errorFeedback = {
-                error: 'AI analysis failed',
-                message: 'Unable to generate feedback at this time',
-                timestamp: new Date().toISOString()
-              };
-              
-              // Save error to database
-              await prisma.debate.update({
-                where: { id: debateId },
-                data: { aiFeedback: errorFeedback },
-              });
-              
-              io.to(`debate_${debateId}`).emit('debate_feedback', errorFeedback);
-            }
-            
-          } catch (dbErr) {
-            console.error(`❌ Database error ending debate ${debateId}:`, {
-              error: dbErr instanceof Error ? dbErr.stack || dbErr.message : dbErr,
-              errorType: dbErr?.constructor?.name || 'Unknown'
-            });
-            io.to(`debate_${debateId}`).emit('error', { 
-              message: 'Failed to end debate properly' 
-            });
+            await endDebate(debateId, io);
+          } catch (error) {
+            console.error(`❌ Error in debate timeout for ${debateId}:`, error);
+          } finally {
+            // Always clean up the timeout reference
+            debateTimeouts.delete(debateId);
           }
         }, debate.duration * 1000);
+        
+        // Store the timeout reference
+        debateTimeouts.set(debateId, timeoutId);
         
       } catch (err) {
         console.error('❌ Error starting debate:', {
@@ -204,6 +160,10 @@ app.prepare().then(() => {
 
         // Prevent messages if debate is completed
         const debate = await prisma.debate.findUnique({ where: { id: debateId } });
+        if (!debate) {
+          socket.emit('error', { message: 'Debate not found.' });
+          return;
+        }
         if (debate.status === 'completed') {
           socket.emit('error', { message: 'Debate has ended.' });
           return;
@@ -265,6 +225,41 @@ app.prepare().then(() => {
     });
   });
 
+  // Graceful shutdown handling
+  process.on('SIGTERM', () => {
+    console.log('🛑 Received SIGTERM, cleaning up...');
+    // Clear all timeouts
+    debateTimeouts.forEach((timeoutId, debateId) => {
+      clearTimeout(timeoutId);
+      console.log(`🧹 Cleared timeout for debate ${debateId}`);
+    });
+    debateTimeouts.clear();
+    
+    // Close database connection
+    if (prisma) {
+      prisma.$disconnect();
+    }
+    
+    process.exit(0);
+  });
+
+  process.on('SIGINT', () => {
+    console.log('🛑 Received SIGINT, cleaning up...');
+    // Clear all timeouts
+    debateTimeouts.forEach((timeoutId, debateId) => {
+      clearTimeout(timeoutId);
+      console.log(`🧹 Cleared timeout for debate ${debateId}`);
+    });
+    debateTimeouts.clear();
+    
+    // Close database connection
+    if (prisma) {
+      prisma.$disconnect();
+    }
+    
+    process.exit(0);
+  });
+
   server.listen(port, (err) => {
     if (err) {
       console.error('❌ Server failed to start:', err);
@@ -288,6 +283,160 @@ app.prepare().then(() => {
   console.error('❌ Failed to prepare Next.js app:', error);
   process.exit(1);
 });
+
+// Separate function to handle debate ending with proper error handling
+async function endDebate(debateId, io) {
+  try {
+    // Check if debate exists before updating
+    const existingDebate = await prisma.debate.findUnique({
+      where: { id: debateId }
+    });
+
+    if (!existingDebate) {
+      console.log(`⚠️ Debate ${debateId} not found for ending - might have been cleaned up already`);
+      return;
+    }
+
+    // Only update if debate is still in progress
+    if (existingDebate.status === 'completed') {
+      console.log(`⚠️ Debate ${debateId} already completed`);
+      return;
+    }
+
+    const end = new Date();
+    await prisma.debate.update({
+      where: { id: debateId },
+      data: { endTime: end, status: 'completed' },
+    });
+    
+    console.log(`✅ Debate ${debateId} ended, generating AI feedback...`);
+    io.to(`debate_${debateId}`).emit('debate_ended');
+    
+    // --- ENHANCED AI FEEDBACK LOGIC ---
+    try {
+      const messages = await prisma.message.findMany({
+        where: { debateId },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          sender: {
+            select: { username: true }
+          }
+        }
+      });
+      
+      // Use live transcripts if available
+      const transcripts = debateTranscripts[debateId] || { pro: '', con: '' };
+      
+      console.log(`📊 Generating feedback for debate ${debateId}:`, {
+        messageCount: messages.length,
+        proTranscriptLength: transcripts.pro.length,
+        conTranscriptLength: transcripts.con.length
+      });
+      
+      // Generate AI feedback
+      const aiFeedback = await getAIFeedback(messages, transcripts);
+      
+      // Save feedback to database
+      await prisma.debate.update({
+        where: { id: debateId },
+        data: { aiFeedback },
+      });
+      
+      console.log(`✅ AI feedback generated and saved for debate ${debateId}`);
+      
+      // Emit feedback to all connected clients
+      io.to(`debate_${debateId}`).emit('debate_feedback', aiFeedback);
+      
+      // Clean up transcripts from memory
+      delete debateTranscripts[debateId];
+      
+    } catch (aiErr) {
+      console.error(`❌ AI feedback error for debate ${debateId}:`, {
+        error: aiErr instanceof Error ? aiErr.stack || aiErr.message : aiErr,
+        errorType: aiErr?.constructor?.name || 'Unknown'
+      });
+      
+      // Send error feedback to clients
+      const errorFeedback = {
+        error: 'AI analysis failed',
+        message: 'Unable to generate feedback at this time',
+        timestamp: new Date().toISOString()
+      };
+      
+      // Try to save error to database, but don't fail if debate is gone
+      try {
+        await prisma.debate.update({
+          where: { id: debateId },
+          data: { aiFeedback: errorFeedback },
+        });
+      } catch (dbSaveErr) {
+        console.error(`❌ Could not save error feedback for debate ${debateId}:`, dbSaveErr.message);
+      }
+      
+      io.to(`debate_${debateId}`).emit('debate_feedback', errorFeedback);
+    }
+    
+  } catch (dbErr) {
+    // Handle the specific "record not found" error
+    if (dbErr.code === 'P2025' || dbErr.message.includes('No record was found for an update')) {
+      console.log(`⚠️ Debate ${debateId} not found for update - might have been cleaned up already`);
+      return;
+    }
+    
+    console.error(`❌ Database error ending debate ${debateId}:`, {
+      error: dbErr instanceof Error ? dbErr.stack || dbErr.message : dbErr,
+      errorType: dbErr?.constructor?.name || 'Unknown'
+    });
+    
+    io.to(`debate_${debateId}`).emit('error', { 
+      message: 'Failed to end debate properly' 
+    });
+  }
+}
+
+// Function to clean up orphaned debates on server startup
+async function cleanupOrphanedDebates() {
+  try {
+    console.log('🧹 Cleaning up orphaned debates...');
+    
+    // Find debates that are still marked as active but are older than 10 minutes
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    
+    const orphanedDebates = await prisma.debate.findMany({
+      where: {
+        status: {
+          in: ['active', 'in-progress']
+        },
+        createdAt: {
+          lt: tenMinutesAgo
+        }
+      }
+    });
+    
+    if (orphanedDebates.length > 0) {
+      console.log(`🧹 Found ${orphanedDebates.length} orphaned debates, cleaning up...`);
+      
+      await prisma.debate.updateMany({
+        where: {
+          id: {
+            in: orphanedDebates.map(d => d.id)
+          }
+        },
+        data: {
+          status: 'completed',
+          endTime: new Date()
+        }
+      });
+      
+      console.log(`✅ Cleaned up ${orphanedDebates.length} orphaned debates`);
+    } else {
+      console.log('✅ No orphaned debates found');
+    }
+    
+  } catch (error) {
+    console.error('❌ Error cleaning up orphaned debates:', error);
+  }
+}
 
 // Enhanced AI feedback function with better error handling
 async function getAIFeedback(messages, transcripts) {
