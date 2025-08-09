@@ -72,10 +72,29 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
   const streamRef = useRef<MediaStream | null>(null);
   const peerRef = useRef<PeerInstance | null>(null);
   
-  // NEW: Add user interaction states
+  // User interaction states
   const [userInteracted, setUserInteracted] = useState(false);
   const [showCameraPrompt, setShowCameraPrompt] = useState(true);
   const [isStartingCamera, setIsStartingCamera] = useState(false);
+
+  // Enhanced speech recognition with better configuration
+  const {
+    transcript,
+    finalTranscript,
+    interimTranscript,
+    isListening,
+    hasError: speechError,
+    errorMessage: speechErrorMessage,
+    isSupported: speechSupported,
+    clearTranscript,
+  } = useSpeechRecognition(!!stream && userInteracted, {
+    language: "en-US",
+    continuous: true,
+    interimResults: true,
+    maxAlternatives: 1,
+    restartDelay: 2000, // Restart after 2 seconds of silence
+    clearDelay: 60000,  // Clear transcript after 1 minute of inactivity
+  });
 
   // Keep refs updated
   useEffect(() => {
@@ -128,7 +147,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
       });
   }, []);
 
-  // NEW: Manual camera start function
+  // Manual camera start function
   const handleStartCamera = async () => {
     if (!selectedDeviceId) {
       setMediaError("No camera device selected");
@@ -149,7 +168,9 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         },
         audio: {
           echoCancellation: true,
-          noiseSuppression: true
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
         }
       });
 
@@ -163,6 +184,8 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
       const error = err instanceof Error ? err : new Error(String(err));
       console.error("[VideoDebateRoom] getUserMedia error:", error);
       setMediaError("Could not access camera: " + (error.message || "Unknown error"));
+      setUserInteracted(false);
+      setShowCameraPrompt(true);
     }
     finally {
       setIsStartingCamera(false);
@@ -216,7 +239,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
         stream,
         config: { 
           iceServers,
-          iceTransportPolicy: 'all', // Allow both relay and direct connections
+          iceTransportPolicy: 'all',
         }
       }) as PeerInstance;
 
@@ -286,7 +309,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
           p.destroy();
         }
       };
-    }, 1000); // Reduced from 2000ms
+    }, 1000);
 
     return () => {
       clearTimeout(timeout);
@@ -307,18 +330,22 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     }
   }, [stream, remoteStream]);
 
-  const transcript = useSpeechRecognition(!!stream);
-
+  // Send transcript updates to other participants
   useEffect(() => {
     if (!socket || !isConnected || !debateId || !role) return;
-    socket.emit("transcript_update", {
-      debateId,
-      userId,
-      role,
-      transcript,
-    });
-  }, [transcript, socket, isConnected, debateId, userId, role]);
+    
+    // Only send final transcript to avoid overwhelming the server
+    if (finalTranscript) {
+      socket.emit("transcript_update", {
+        debateId,
+        userId,
+        role,
+        transcript: finalTranscript,
+      });
+    }
+  }, [finalTranscript, socket, isConnected, debateId, userId, role]);
 
+  // Listen for transcript updates from other participants
   useEffect(() => {
     if (!socket || !isConnected) return;
     const onTranscriptUpdate = ({ role: updateRole, transcript: updateTranscript }: TranscriptUpdateData) => {
@@ -331,6 +358,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     };
   }, [socket, isConnected]);
 
+  // Update local transcript display
   useEffect(() => {
     if (role === "pro") setProTranscript(transcript);
     if (role === "con") setConTranscript(transcript);
@@ -350,6 +378,19 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
           {mediaError && (
             <div className="mb-4 p-2 bg-red-100 text-red-700 rounded border border-red-300 w-full text-center">
               {mediaError}
+            </div>
+          )}
+
+          {/* Speech Recognition Status */}
+          {userInteracted && !speechSupported && (
+            <div className="mb-4 p-2 bg-orange-100 text-orange-700 rounded border border-orange-300 w-full text-center">
+              Speech recognition not supported in this browser
+            </div>
+          )}
+
+          {userInteracted && speechError && speechErrorMessage && (
+            <div className="mb-4 p-2 bg-red-100 text-red-700 rounded border border-red-300 w-full text-center">
+              Speech recognition error: {speechErrorMessage}
             </div>
           )}
 
@@ -437,6 +478,20 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
               </div>
             </div>
 
+            {/* Speech Recognition Status Indicator */}
+            {userInteracted && speechSupported && (
+              <div className="absolute top-4 left-4 z-20">
+                <div className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${
+                  isListening 
+                    ? 'bg-red-500/80 text-white animate-pulse' 
+                    : 'bg-gray-500/80 text-white'
+                }`}>
+                  <div className={`w-2 h-2 rounded-full ${isListening ? 'bg-white' : 'bg-gray-300'}`}></div>
+                  {isListening ? 'Listening...' : 'Speech Recognition'}
+                </div>
+              </div>
+            )}
+
             {process.env.NODE_ENV === 'development' && (
               <div className="absolute bottom-20 left-4 z-20 bg-black/80 text-white text-xs p-2 rounded">
                 <div>Role: {role}</div>
@@ -446,25 +501,64 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
                 <div>Remote Stream: {remoteStream ? 'Yes' : 'No'}</div>
                 <div>Peer: {peer ? 'Active' : 'None'}</div>
                 <div>User Interacted: {userInteracted ? 'Yes' : 'No'}</div>
+                <div>Speech Listening: {isListening ? 'Yes' : 'No'}</div>
+                <div>Speech Supported: {speechSupported ? 'Yes' : 'No'}</div>
               </div>
             )}
           </div>
         </div>
       </div>
+      
       <div className="w-full lg:w-80 bg-white rounded-lg border border-gray-200 p-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Live Transcripts</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Live Transcripts</h3>
+          {userInteracted && speechSupported && (
+            <button
+              onClick={clearTranscript}
+              className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 rounded transition-colors"
+              title="Clear transcript"
+            >
+              Clear
+            </button>
+          )}
+        </div>
 
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-2">
             <div className={`w-3 h-3 rounded-full ${role === 'pro' ? 'bg-green-500' : 'bg-red-500'}`}></div>
             <span className="text-sm font-medium text-gray-700">You ({role.toUpperCase()})</span>
+            {userInteracted && speechSupported && (
+              <div className={`ml-auto text-xs px-2 py-1 rounded ${
+                isListening 
+                  ? 'bg-green-100 text-green-700' 
+                  : 'bg-gray-100 text-gray-500'
+              }`}>
+                {isListening ? '🎤 Listening' : '🎤 Ready'}
+              </div>
+            )}
           </div>
           <div className="bg-gray-50 rounded-lg p-3 min-h-[100px] max-h-[200px] overflow-y-auto">
             <div className="text-sm text-gray-800">
               {transcript ? (
-                <span>{transcript}</span>
+                <div>
+                  {/* Show final transcript in regular text */}
+                  <span>{finalTranscript}</span>
+                  {/* Show interim transcript in italics */}
+                  {interimTranscript && (
+                    <span className="italic text-gray-600"> {interimTranscript}</span>
+                  )}
+                </div>
               ) : (
-                <span className="text-gray-400 italic">Speak to see your transcript...</span>
+                <span className="text-gray-400 italic">
+                  {!userInteracted 
+                    ? "Start camera to enable speech recognition..."
+                    : !speechSupported 
+                    ? "Speech recognition not supported..."
+                    : speechError 
+                    ? "Speech recognition error..."
+                    : "Speak to see your transcript..."
+                  }
+                </span>
               )}
             </div>
           </div>
@@ -493,6 +587,7 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
             </div>
           </div>
         </div>
+        
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>Socket:</span>
@@ -504,6 +599,20 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
             <span>Peer:</span>
             <span className={`font-medium ${connected ? 'text-green-600' : 'text-yellow-600'}`}>
               {connected ? 'Connected' : 'Connecting...'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
+            <span>Speech:</span>
+            <span className={`font-medium ${
+              !userInteracted ? 'text-gray-400' :
+              !speechSupported ? 'text-red-600' :
+              speechError ? 'text-red-600' :
+              isListening ? 'text-green-600' : 'text-yellow-600'
+            }`}>
+              {!userInteracted ? 'Disabled' :
+               !speechSupported ? 'Not Supported' :
+               speechError ? 'Error' :
+               isListening ? 'Listening' : 'Ready'}
             </span>
           </div>
           <div className="flex items-center justify-between text-xs text-gray-500 mt-1">

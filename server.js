@@ -21,7 +21,6 @@ console.log('🌐 Environment check:', {
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-// Initialize Prisma with better error handling
 let prisma;
 try {
   prisma = new PrismaClient({
@@ -33,13 +32,11 @@ try {
   process.exit(1);
 }
 
-// Store debate timeouts to clear them when needed
 const debateTimeouts = new Map();
 
 app.prepare().then(() => {
   console.log('✅ Next.js app prepared');
   
-  // Clean up any orphaned debates on startup
   cleanupOrphanedDebates();
   
   const server = createServer(async (req, res) => {
@@ -58,7 +55,6 @@ app.prepare().then(() => {
     }
   });
 
-  // Initialize Socket.IO
   const io = new SocketIOServer(server, {
     path: '/api/socket.io',
     cors: {
@@ -69,7 +65,6 @@ app.prepare().then(() => {
 
   console.log('✅ Socket.IO server initialized');
 
-  // Store latest transcripts in memory
   const debateTranscripts = {};
 
   io.on('connection', (socket) => {
@@ -77,10 +72,8 @@ app.prepare().then(() => {
 
     socket.on('join_debate', async ({ debateId, userId, role }) => {
       try {
-        // All users join the same room for real-time messaging
         socket.join(`debate_${debateId}`);
         console.log(`User ${userId} joined debate ${debateId} as ${role}`);
-        // Notify others (optional, can be kept or removed)
         socket.to(`debate_${debateId}`).emit('user_joined', { userId, role });
       } catch (error) {
         console.error('❌ Error joining debate:', {
@@ -99,7 +92,6 @@ app.prepare().then(() => {
           throw new Error('Database not available');
         }
 
-        // Check if debate exists before updating
         const existingDebate = await prisma.debate.findUnique({
           where: { id: debateId }
         });
@@ -110,7 +102,6 @@ app.prepare().then(() => {
           return;
         }
 
-        // Set startTime and status in DB
         const now = new Date();
         const debate = await prisma.debate.update({
           where: { id: debateId },
@@ -120,26 +111,22 @@ app.prepare().then(() => {
         console.log(`✅ Debate ${debateId} started with duration: ${debate.duration}s`);
         io.to(`debate_${debateId}`).emit('debate_started', { startTime: now, duration: debate.duration });
         
-        // Clear any existing timeout for this debate
         const existingTimeout = debateTimeouts.get(debateId);
         if (existingTimeout) {
           clearTimeout(existingTimeout);
           console.log(`🧹 Cleared existing timeout for debate ${debateId}`);
         }
         
-        // Schedule debate end with proper error handling
         const timeoutId = setTimeout(async () => {
           try {
             await endDebate(debateId, io);
           } catch (error) {
             console.error(`❌ Error in debate timeout for ${debateId}:`, error);
           } finally {
-            // Always clean up the timeout reference
             debateTimeouts.delete(debateId);
           }
         }, debate.duration * 1000);
         
-        // Store the timeout reference
         debateTimeouts.set(debateId, timeoutId);
         
       } catch (err) {
@@ -158,7 +145,6 @@ app.prepare().then(() => {
           throw new Error('Database not available');
         }
 
-        // Prevent messages if debate is completed
         const debate = await prisma.debate.findUnique({ where: { id: debateId } });
         if (!debate) {
           socket.emit('error', { message: 'Debate not found.' });
@@ -205,18 +191,31 @@ app.prepare().then(() => {
     });
 
     socket.on('transcript_update', ({ debateId, userId, role, transcript }) => {
-      if (!debateId || !role) return;
+      if (!debateId || !role || !transcript) return;
+      
       if (!debateTranscripts[debateId]) {
         debateTranscripts[debateId] = { pro: '', con: '' };
       }
-      debateTranscripts[debateId][role] = transcript;
-      io.to(`debate_${debateId}`).emit('transcript_update', { role, transcript });
+      
+      const currentTranscript = debateTranscripts[debateId][role];
+      
+      if (!currentTranscript.includes(transcript)) {
+        debateTranscripts[debateId][role] = currentTranscript + (currentTranscript ? ' ' : '') + transcript;
+        
+        io.to(`debate_${debateId}`).emit('transcript_update', { 
+          role, 
+          transcript: debateTranscripts[debateId][role] 
+        });
+        
+        console.log(`📝 Updated ${role} transcript for debate ${debateId}:`, {
+          newLength: debateTranscripts[debateId][role].length,
+          addedText: transcript.substring(0, 50) + '...'
+        });
+      }
     });
 
-    // WebRTC signaling handler
     socket.on('signal', ({ debateId, userId, signal }) => {
       console.log(`📡 Signal from ${userId} in debate ${debateId}`);
-      // Forward the signal to other participants in the same debate
       socket.to(`debate_${debateId}`).emit('signal', { userId, signal });
     });
 
@@ -225,17 +224,14 @@ app.prepare().then(() => {
     });
   });
 
-  // Graceful shutdown handling
   process.on('SIGTERM', () => {
     console.log('🛑 Received SIGTERM, cleaning up...');
-    // Clear all timeouts
     debateTimeouts.forEach((timeoutId, debateId) => {
       clearTimeout(timeoutId);
       console.log(`🧹 Cleared timeout for debate ${debateId}`);
     });
     debateTimeouts.clear();
     
-    // Close database connection
     if (prisma) {
       prisma.$disconnect();
     }
@@ -245,14 +241,12 @@ app.prepare().then(() => {
 
   process.on('SIGINT', () => {
     console.log('🛑 Received SIGINT, cleaning up...');
-    // Clear all timeouts
     debateTimeouts.forEach((timeoutId, debateId) => {
       clearTimeout(timeoutId);
       console.log(`🧹 Cleared timeout for debate ${debateId}`);
     });
     debateTimeouts.clear();
     
-    // Close database connection
     if (prisma) {
       prisma.$disconnect();
     }
@@ -269,7 +263,6 @@ app.prepare().then(() => {
     console.log(`🔌 Socket.IO server ready on path: /api/socket/io`);
   });
 
-  // Test database connection
   if (prisma) {
     prisma.$connect()
       .then(() => {
@@ -284,10 +277,8 @@ app.prepare().then(() => {
   process.exit(1);
 });
 
-// Separate function to handle debate ending with proper error handling
 async function endDebate(debateId, io) {
   try {
-    // Check if debate exists before updating
     const existingDebate = await prisma.debate.findUnique({
       where: { id: debateId }
     });
@@ -297,7 +288,6 @@ async function endDebate(debateId, io) {
       return;
     }
 
-    // Only update if debate is still in progress
     if (existingDebate.status === 'completed') {
       console.log(`⚠️ Debate ${debateId} already completed`);
       return;
@@ -312,7 +302,6 @@ async function endDebate(debateId, io) {
     console.log(`✅ Debate ${debateId} ended, generating AI feedback...`);
     io.to(`debate_${debateId}`).emit('debate_ended');
     
-    // --- ENHANCED AI FEEDBACK LOGIC ---
     try {
       const messages = await prisma.message.findMany({
         where: { debateId },
@@ -324,7 +313,6 @@ async function endDebate(debateId, io) {
         }
       });
       
-      // Use live transcripts if available
       const transcripts = debateTranscripts[debateId] || { pro: '', con: '' };
       
       console.log(`📊 Generating feedback for debate ${debateId}:`, {
@@ -333,10 +321,8 @@ async function endDebate(debateId, io) {
         conTranscriptLength: transcripts.con.length
       });
       
-      // Generate AI feedback
       const aiFeedback = await getAIFeedback(messages, transcripts);
       
-      // Save feedback to database
       await prisma.debate.update({
         where: { id: debateId },
         data: { aiFeedback },
@@ -344,10 +330,8 @@ async function endDebate(debateId, io) {
       
       console.log(`✅ AI feedback generated and saved for debate ${debateId}`);
       
-      // Emit feedback to all connected clients
       io.to(`debate_${debateId}`).emit('debate_feedback', aiFeedback);
       
-      // Clean up transcripts from memory
       delete debateTranscripts[debateId];
       
     } catch (aiErr) {
@@ -356,14 +340,12 @@ async function endDebate(debateId, io) {
         errorType: aiErr?.constructor?.name || 'Unknown'
       });
       
-      // Send error feedback to clients
       const errorFeedback = {
         error: 'AI analysis failed',
         message: 'Unable to generate feedback at this time',
         timestamp: new Date().toISOString()
       };
       
-      // Try to save error to database, but don't fail if debate is gone
       try {
         await prisma.debate.update({
           where: { id: debateId },
@@ -377,7 +359,6 @@ async function endDebate(debateId, io) {
     }
     
   } catch (dbErr) {
-    // Handle the specific "record not found" error
     if (dbErr.code === 'P2025' || dbErr.message.includes('No record was found for an update')) {
       console.log(`⚠️ Debate ${debateId} not found for update - might have been cleaned up already`);
       return;
@@ -394,12 +375,10 @@ async function endDebate(debateId, io) {
   }
 }
 
-// Function to clean up orphaned debates on server startup
 async function cleanupOrphanedDebates() {
   try {
     console.log('🧹 Cleaning up orphaned debates...');
     
-    // Find debates that are still marked as active but are older than 10 minutes
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
     
     const orphanedDebates = await prisma.debate.findMany({
@@ -438,10 +417,8 @@ async function cleanupOrphanedDebates() {
   }
 }
 
-// Enhanced AI feedback function with better error handling
 async function getAIFeedback(messages, transcripts) {
   try {
-    // Check if we have sufficient content
     if (messages.length === 0 && !transcripts.pro && !transcripts.con) {
       return {
         error: 'Insufficient content',
@@ -451,7 +428,6 @@ async function getAIFeedback(messages, transcripts) {
       };
     }
 
-    // Prepare the prompt for OpenRouter
     const prompt = `You are an expert debate judge. Analyze the following debate between Pro and Con. For each side, provide:
 - A score out of 10 (number only)
 - A list of mistakes (array of strings)
@@ -505,7 +481,7 @@ Respond ONLY in valid JSON with this exact format:
         max_tokens: 1000,
         temperature: 0.3
       }),
-      timeout: 30000 // 30 second timeout
+      timeout: 30000
     });
 
     if (!response.ok) {
@@ -527,15 +503,12 @@ Respond ONLY in valid JSON with this exact format:
     
     console.log('🤖 Raw AI response:', aiText);
 
-    // Try to parse JSON from AI response
     let feedback;
     try {
-      // Extract JSON from response (in case AI adds extra text)
       const jsonMatch = aiText.match(/\{[\s\S]*\}/);
       const jsonStr = jsonMatch ? jsonMatch[0] : aiText;
       feedback = JSON.parse(jsonStr);
       
-      // Validate structure
       if (!feedback.pro || !feedback.con) {
         throw new Error('Invalid feedback structure');
       }
@@ -545,7 +518,6 @@ Respond ONLY in valid JSON with this exact format:
       
     } catch (parseErr) {
       console.error('❌ Failed to parse AI response:', parseErr);
-      // Return structured error with raw content
       return {
         error: 'Parse error',
         message: 'AI response could not be parsed as JSON',
