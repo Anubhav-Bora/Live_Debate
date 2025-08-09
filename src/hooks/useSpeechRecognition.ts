@@ -270,7 +270,7 @@ export function useSpeechRecognition(
       };
 
       recognition.start();
-    } catch (error) {
+    } catch {
       isStartingRef.current = false;
       setState(prev => ({
         ...prev,
@@ -279,7 +279,7 @@ export function useSpeechRecognition(
         isListening: false,
       }));
     }
-  }, [enabled, language, continuous, interimResults, maxAlternatives, restartDelay, clearDelay, maxRestartAttempts, restartBackoffMultiplier]);
+  }, [enabled, language, continuous, interimResults, maxAlternatives, restartDelay, clearDelay, maxRestartAttempts, restartBackoffMultiplier, isSupported]);
 
   const stopRecognition = useCallback(() => {
     isManualStopRef.current = true;
@@ -329,7 +329,7 @@ export function useSpeechRecognition(
     return () => {
       stopRecognition();
     };
-  }, [enabled, startRecognition, stopRecognition]);
+  }, [enabled, startRecognition, stopRecognition, isSupported]);
 
   useEffect(() => {
     return () => {
