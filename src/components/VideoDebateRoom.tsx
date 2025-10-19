@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import SimplePeer from "simple-peer";
 import { useSocket } from "@/context/SocketContext";
-import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { useAdvancedSpeechRecognition } from "@/hooks/useAdvancedSpeechRecognition";
 
 // Define custom types
 type SignalCallback = (data: SignalData) => void;
@@ -86,14 +86,12 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     hasError: speechError,
     errorMessage: speechErrorMessage,
     isSupported: speechSupported,
+    isMicrophoneReady,
     clearTranscript,
-  } = useSpeechRecognition(!!stream && userInteracted, {
+  } = useAdvancedSpeechRecognition(!!stream && userInteracted, {
     language: "en-US",
     continuous: true,
     interimResults: true,
-    maxAlternatives: 1,
-    restartDelay: 2000, // Restart after 2 seconds of silence
-    clearDelay: 60000,  // Clear transcript after 1 minute of inactivity
   });
 
   // Keep refs updated
