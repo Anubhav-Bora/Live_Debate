@@ -280,7 +280,8 @@ app.prepare().then(() => {
 async function endDebate(debateId, io) {
   try {
     const existingDebate = await prisma.debate.findUnique({
-      where: { id: debateId }
+      where: { id: debateId },
+      include: { proUser: true, conUser: true }
     });
 
     if (!existingDebate) {
@@ -293,6 +294,11 @@ async function endDebate(debateId, io) {
       return;
     }
 
+    // Check if both participants joined
+    const missingParticipants = [];
+    if (!existingDebate.proUser) missingParticipants.push('Pro player did not join');
+    if (!existingDebate.conUser) missingParticipants.push('Con player did not join');
+
     const end = new Date();
     await prisma.debate.update({
       where: { id: debateId },
@@ -300,6 +306,11 @@ async function endDebate(debateId, io) {
     });
     
     console.log(`✅ Debate ${debateId} ended, generating AI feedback...`);
+    console.log(`👥 Participants:`, { 
+      proUser: existingDebate.proUser?.username || 'MISSING', 
+      conUser: existingDebate.conUser?.username || 'MISSING',
+      missingParticipants 
+    });
     io.to(`debate_${debateId}`).emit('debate_ended');
     
     try {
@@ -318,17 +329,61 @@ async function endDebate(debateId, io) {
       console.log(`📊 Generating feedback for debate ${debateId}:`, {
         messageCount: messages.length,
         proTranscriptLength: transcripts.pro.length,
-        conTranscriptLength: transcripts.con.length
+        conTranscriptLength: transcripts.con.length,
+        missingParticipants
       });
       
-      const aiFeedback = await getAIFeedback(messages, transcripts);
+      // Generate AI feedback
+      let aiFeedback = await getAIFeedback(messages, transcripts, missingParticipants);
       
+      // Save feedback to database
       await prisma.debate.update({
         where: { id: debateId },
         data: { aiFeedback },
       });
       
       console.log(`✅ AI feedback generated and saved for debate ${debateId}`);
+      
+      // If both participants joined, save scores to leaderboard
+      if (!missingParticipants.length && aiFeedback.pro && aiFeedback.con) {
+        try {
+          console.log(`💾 Saving scores to leaderboard for debate ${debateId}...`);
+          
+          // Save Pro player score
+          if (existingDebate.proUser && aiFeedback.pro.score) {
+            await prisma.score.create({
+              data: {
+                userId: existingDebate.proUser.id,
+                debateId: debateId,
+                logic: Math.floor(aiFeedback.pro.logic || aiFeedback.pro.score),
+                clarity: Math.floor(aiFeedback.pro.clarity || aiFeedback.pro.score),
+                persuasiveness: Math.floor(aiFeedback.pro.persuasiveness || aiFeedback.pro.score),
+                tone: Math.floor(aiFeedback.pro.tone || aiFeedback.pro.score)
+              }
+            });
+            console.log(`✅ Pro score saved for ${existingDebate.proUser.username}`);
+          }
+          
+          // Save Con player score
+          if (existingDebate.conUser && aiFeedback.con.score) {
+            await prisma.score.create({
+              data: {
+                userId: existingDebate.conUser.id,
+                debateId: debateId,
+                logic: Math.floor(aiFeedback.con.logic || aiFeedback.con.score),
+                clarity: Math.floor(aiFeedback.con.clarity || aiFeedback.con.score),
+                persuasiveness: Math.floor(aiFeedback.con.persuasiveness || aiFeedback.con.score),
+                tone: Math.floor(aiFeedback.con.tone || aiFeedback.con.score)
+              }
+            });
+            console.log(`✅ Con score saved for ${existingDebate.conUser.username}`);
+          }
+        } catch (scoreErr) {
+          console.error(`❌ Error saving scores for debate ${debateId}:`, scoreErr.message);
+        }
+      } else if (missingParticipants.length) {
+        console.log(`⚠️ Skipping score save - missing participants: ${missingParticipants.join(', ')}`);
+      }
       
       io.to(`debate_${debateId}`).emit('debate_feedback', aiFeedback);
       
@@ -343,6 +398,7 @@ async function endDebate(debateId, io) {
       const errorFeedback = {
         error: 'AI analysis failed',
         message: 'Unable to generate feedback at this time',
+        missingParticipants,
         timestamp: new Date().toISOString()
       };
       
@@ -417,44 +473,64 @@ async function cleanupOrphanedDebates() {
   }
 }
 
-async function getAIFeedback(messages, transcripts) {
+async function getAIFeedback(messages, transcripts, missingParticipants = []) {
   try {
     if (messages.length === 0 && !transcripts.pro && !transcripts.con) {
       return {
         error: 'Insufficient content',
         message: 'No messages or transcripts available for analysis',
-        pro: { score: 'N/A', mistakes: [], improvements: [], feedback: 'No content to analyze' },
-        con: { score: 'N/A', mistakes: [], improvements: [], feedback: 'No content to analyze' }
+        missingParticipants,
+        pro: { score: 'N/A', logic: 0, clarity: 0, persuasiveness: 0, tone: 0, mistakes: [], improvements: [], feedback: 'No content to analyze' },
+        con: { score: 'N/A', logic: 0, clarity: 0, persuasiveness: 0, tone: 0, mistakes: [], improvements: [], feedback: 'No content to analyze' }
+      };
+    }
+
+    // Check for missing participants
+    if (missingParticipants.length > 0) {
+      return {
+        missingParticipants,
+        message: `Debate incomplete: ${missingParticipants.join(', ')}`,
+        pro: { score: 'N/A', logic: 0, clarity: 0, persuasiveness: 0, tone: 0, mistakes: [], improvements: [], feedback: 'Debate could not be judged - missing participant' },
+        con: { score: 'N/A', logic: 0, clarity: 0, persuasiveness: 0, tone: 0, mistakes: [], improvements: [], feedback: 'Debate could not be judged - missing participant' }
       };
     }
 
     const prompt = `You are an expert debate judge. Analyze the following debate between Pro and Con. For each side, provide:
-- A score out of 10 (number only)
-- A list of mistakes (array of strings)
-- Suggestions for improvement (array of strings)  
-- A detailed feedback paragraph (string)
+- A numeric score out of 10 for overall performance
+- Individual scores (1-10) for: logic, clarity, persuasiveness, tone
+- A list of specific mistakes they made (array)
+- Suggestions for improvement (array)
+- A detailed feedback paragraph
 
 Debate Transcripts (from speech-to-text):
-PRO: ${transcripts.pro || 'No transcript available'}
+PRO: ${transcripts.pro || 'No speech content'}
 
-CON: ${transcripts.con || 'No transcript available'}
+CON: ${transcripts.con || 'No speech content'}
 
 Debate Messages (chat):
-${messages.map(m => `[${m.role.toUpperCase()}] ${m.content}`).join('\n') || 'No messages available'}
+${messages.map(m => `[${m.role?.toUpperCase() || 'UNKNOWN'}] ${m.content}`).join('\n') || 'No messages available'}
 
-Respond ONLY in valid JSON with this exact format:
+IMPORTANT: Respond ONLY in valid JSON with this exact format:
 {
   "pro": {
     "score": 7,
+    "logic": 8,
+    "clarity": 7,
+    "persuasiveness": 6,
+    "tone": 7,
     "mistakes": ["mistake1", "mistake2"],
     "improvements": ["improvement1", "improvement2"],
-    "feedback": "detailed feedback paragraph"
+    "feedback": "detailed paragraph about pro's performance"
   },
   "con": {
     "score": 8,
-    "mistakes": ["mistake1", "mistake2"],
-    "improvements": ["improvement1", "improvement2"], 
-    "feedback": "detailed feedback paragraph"
+    "logic": 8,
+    "clarity": 8,
+    "persuasiveness": 8,
+    "tone": 7,
+    "mistakes": ["mistake1"],
+    "improvements": ["improvement1"],
+    "feedback": "detailed paragraph about con's performance"
   }
 }`;
 
@@ -465,6 +541,7 @@ Respond ONLY in valid JSON with this exact format:
     }
 
     console.log('🤖 Sending request to OpenRouter API...');
+    console.log(`📝 Prompt: Analyzing debate with ${messages.length} messages and ${transcripts.pro?.length || 0} chars pro, ${transcripts.con?.length || 0} chars con`);
     
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -473,13 +550,13 @@ Respond ONLY in valid JSON with this exact format:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4',
+        model: 'openai/gpt-4-turbo-preview',
         messages: [
-          { role: 'system', content: 'You are an expert debate judge. Always respond with valid JSON only.' },
+          { role: 'system', content: 'You are an expert debate judge. ALWAYS respond with ONLY valid JSON, no other text.' },
           { role: 'user', content: prompt }
         ],
-        max_tokens: 1000,
-        temperature: 0.3
+        max_tokens: 1500,
+        temperature: 0.5
       }),
       timeout: 30000
     });
@@ -489,9 +566,9 @@ Respond ONLY in valid JSON with this exact format:
       console.error('❌ OpenRouter API error:', {
         status: response.status,
         statusText: response.statusText,
-        error: errorText
+        error: errorText.substring(0, 200)
       });
-      throw new Error(`OpenRouter API error ${response.status}: ${errorText}`);
+      throw new Error(`OpenRouter API error ${response.status}: ${errorText.substring(0, 100)}`);
     }
 
     const data = await response.json();
@@ -501,30 +578,48 @@ Respond ONLY in valid JSON with this exact format:
       throw new Error('Empty response from AI');
     }
     
-    console.log('🤖 Raw AI response:', aiText);
+    console.log('🤖 Raw AI response:', aiText.substring(0, 200) + '...');
 
     let feedback;
     try {
+      // Extract JSON from response (handle markdown code blocks)
       const jsonMatch = aiText.match(/\{[\s\S]*\}/);
       const jsonStr = jsonMatch ? jsonMatch[0] : aiText;
       feedback = JSON.parse(jsonStr);
       
+      // Validate structure
       if (!feedback.pro || !feedback.con) {
-        throw new Error('Invalid feedback structure');
+        throw new Error('Invalid feedback structure - missing pro or con');
       }
+
+      // Ensure all required fields exist with defaults
+      const ensureFields = (obj) => ({
+        score: obj.score || 5,
+        logic: obj.logic || 5,
+        clarity: obj.clarity || 5,
+        persuasiveness: obj.persuasiveness || 5,
+        tone: obj.tone || 5,
+        mistakes: Array.isArray(obj.mistakes) ? obj.mistakes : [],
+        improvements: Array.isArray(obj.improvements) ? obj.improvements : [],
+        feedback: obj.feedback || 'No additional feedback'
+      });
+
+      feedback.pro = ensureFields(feedback.pro);
+      feedback.con = ensureFields(feedback.con);
       
-      console.log('✅ Successfully parsed AI feedback');
+      console.log('✅ Successfully parsed AI feedback:', {
+        proScore: feedback.pro.score,
+        conScore: feedback.con.score,
+        proLogic: feedback.pro.logic,
+        conLogic: feedback.con.logic
+      });
+      
       return feedback;
       
     } catch (parseErr) {
-      console.error('❌ Failed to parse AI response:', parseErr);
-      return {
-        error: 'Parse error',
-        message: 'AI response could not be parsed as JSON',
-        raw: aiText,
-        pro: { score: 'N/A', mistakes: [], improvements: [], feedback: 'Analysis failed' },
-        con: { score: 'N/A', mistakes: [], improvements: [], feedback: 'Analysis failed' }
-      };
+      console.error('❌ Failed to parse AI response:', parseErr.message);
+      console.error('Raw response:', aiText);
+      throw parseErr;
     }
     
   } catch (error) {
@@ -535,9 +630,10 @@ Respond ONLY in valid JSON with this exact format:
     return {
       error: error.message || 'Unknown error',
       message: 'Failed to generate AI feedback',
+      missingParticipants,
       timestamp: new Date().toISOString(),
-      pro: { score: 'N/A', mistakes: [], improvements: [], feedback: 'Error generating feedback' },
-      con: { score: 'N/A', mistakes: [], improvements: [], feedback: 'Error generating feedback' }
+      pro: { score: 0, logic: 0, clarity: 0, persuasiveness: 0, tone: 0, mistakes: [], improvements: [], feedback: 'Error generating feedback' },
+      con: { score: 0, logic: 0, clarity: 0, persuasiveness: 0, tone: 0, mistakes: [], improvements: [], feedback: 'Error generating feedback' }
     };
   }
 }

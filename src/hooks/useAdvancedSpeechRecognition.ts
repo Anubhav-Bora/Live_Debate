@@ -294,21 +294,36 @@ export function useAdvancedSpeechRecognition(
     setInterimTranscript("");
   }, []);
 
-  // Test microphone availability
+  // Test microphone availability and request permissions
   useEffect(() => {
+    console.log("[Speech Recognition] 🎤 Requesting microphone access...");
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then(stream => {
         stream.getTracks().forEach(track => track.stop());
-        console.log("[Speech Recognition] ✅ Microphone is available");
+        console.log("[Speech Recognition] ✅ Microphone is available and permissions granted");
         setState(prev => ({ ...prev, isMicrophoneReady: true }));
       })
       .catch(error => {
-        console.error("[Speech Recognition] ❌ Microphone error:", error.message);
+        console.error("[Speech Recognition] ❌ Microphone error:", error.name, error.message);
+        
+        let friendlyMessage = "";
+        
+        // Provide specific guidance based on error type
+        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+          friendlyMessage = "Microphone permission denied. Please allow microphone access in Chrome settings (top-right menu → Settings → Privacy and security → Site settings → Microphone)";
+        } else if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+          friendlyMessage = "No microphone found. Please connect a microphone to your device.";
+        } else if (error.name === "NotReadableError") {
+          friendlyMessage = "Microphone is in use by another application. Please close other apps using the microphone.";
+        } else {
+          friendlyMessage = `Microphone error: ${error.message}`;
+        }
+        
         setState(prev => ({
           ...prev,
           hasError: true,
-          errorMessage: `Microphone error: ${error.message}`,
+          errorMessage: friendlyMessage,
           isMicrophoneReady: false,
         }));
       });

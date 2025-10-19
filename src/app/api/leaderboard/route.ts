@@ -34,6 +34,7 @@ export async function GET(req: Request) {
             logic: true,
             clarity: true,
             persuasiveness: true,
+            tone: true,
           },
         },
         _count: {
@@ -77,11 +78,13 @@ export async function GET(req: Request) {
     const formatted = users
       .map((user) => {
         const scoreCount = user.scores.length;
+        if (scoreCount === 0) return null;
+
         const totalAverage =
           user.scores.reduce((acc, score) => {
-            const avgScore = (score.logic + score.clarity + score.persuasiveness) / 3;
+            const avgScore = (score.logic + score.clarity + score.persuasiveness + (score.tone || 5)) / 4;
             return acc + avgScore;
-          }, 0) / (scoreCount || 1);
+          }, 0) / scoreCount;
 
         return {
           id: user.id,
@@ -89,11 +92,45 @@ export async function GET(req: Request) {
           totalScore: Number(totalAverage.toFixed(2)),
           debateCount: user._count.debatesPro + user._count.debatesCon,
           badges: badgeCountMap.get(user.id) || 0,
+          status: 'active',
         };
       })
-      .sort((a, b) => b.totalScore - a.totalScore); // Step 4: Sort in JS
+      .filter((user) => user !== null)
+      .sort((a, b) => b.totalScore - a.totalScore);
 
-    return NextResponse.json(formatted);
+    // Step 4: Get recent incomplete debates (missing participants)
+    const incompletedebates = await prisma.debate.findMany({
+      where: {
+        createdAt: { gte: dateFilter },
+        status: 'completed',
+      },
+      include: {
+        proUser: { select: { id: true, username: true } },
+        conUser: { select: { id: true, username: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const missingParticipantsInfo = incompletedebates
+      .filter(debate => !debate.proUser || !debate.conUser)
+      .map(debate => ({
+        debateId: debate.id,
+        topic: debate.topic,
+        proUser: debate.proUser?.username || '❌ Pro player did not join',
+        conUser: debate.conUser?.username || '❌ Con player did not join',
+        createdAt: debate.createdAt,
+      }));
+
+    return NextResponse.json({
+      leaderboard: formatted,
+      incompleteDebates: missingParticipantsInfo,
+      range,
+      summary: {
+        totalPlayers: formatted.length,
+        incompleteDebatesCount: missingParticipantsInfo.length,
+      },
+    });
   } catch (error) {
     console.error("Leaderboard error:", error);
     return NextResponse.json(
