@@ -86,7 +86,6 @@ export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateR
     hasError: speechError,
     errorMessage: speechErrorMessage,
     isSupported: speechSupported,
-    isMicrophoneReady,
     clearTranscript,
   } = useAdvancedSpeechRecognition(!!stream && userInteracted, {
     language: "en-US",

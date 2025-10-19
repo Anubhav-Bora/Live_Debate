@@ -44,13 +44,13 @@ interface SpeechRecognitionConstructor {
   new (): SpeechRecognitionInstance;
 }
 
-// Use any to avoid TypeScript conflicts with existing Window interface
+// Use type assertion to avoid TypeScript conflicts with existing Window interface
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getWebSpeechRecognition = (): SpeechRecognitionConstructor | undefined => {
   if (typeof window === "undefined") return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 };
-
-// @ts-ignore - Suppress the duplicate interface error
 
 interface UseAdvancedSpeechRecognitionOptions {
   language?: string;
@@ -354,7 +354,6 @@ export function useAdvancedSpeechRecognition(
     hasError: state.hasError,
     errorMessage: state.errorMessage,
     isSupported: state.isSupported,
-    isMicrophoneReady: state.isMicrophoneReady,
     clearTranscript,
     isAttempting: attemptCountRef.current > 0,
     attemptCount: attemptCountRef.current,
