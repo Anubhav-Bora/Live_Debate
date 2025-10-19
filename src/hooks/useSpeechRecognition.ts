@@ -116,7 +116,15 @@ export function useSpeechRecognition(
   }, []);
 
   const startRecognition = useCallback(() => {
+    console.log("[useSpeechRecognition] startRecognition called:", {
+      enabled,
+      isSupported: isSupported(),
+      recognitionRef: !!recognitionRef.current,
+      isStarting: isStartingRef.current
+    });
+
     if (!enabled || !isSupported() || recognitionRef.current || isStartingRef.current) {
+      console.log("[useSpeechRecognition] Early return - conditions not met");
       return;
     }
 
@@ -126,7 +134,10 @@ export function useSpeechRecognition(
       const SpeechRecognition =
         window.SpeechRecognition || window.webkitSpeechRecognition;
       
+      console.log("[useSpeechRecognition] SpeechRecognition API:", SpeechRecognition ? 'Available' : 'Not available');
+
       if (!SpeechRecognition) {
+        console.error("[useSpeechRecognition] Speech recognition API not supported");
         setState(prev => ({
           ...prev,
           hasError: true,
@@ -146,6 +157,7 @@ export function useSpeechRecognition(
       recognition.maxAlternatives = maxAlternatives;
 
       recognition.onstart = () => {
+        console.log("[useSpeechRecognition] Recognition started - now listening");
         isStartingRef.current = false;
         setState(prev => ({
           ...prev,
@@ -166,6 +178,13 @@ export function useSpeechRecognition(
           const result = event.results[i];
           const transcript = result[0].transcript;
 
+          console.log("[useSpeechRecognition] Result received:", {
+            index: i,
+            transcript,
+            isFinal: result.isFinal,
+            confidence: result[0].confidence
+          });
+
           if (result.isFinal) {
             finalTranscriptLocal += transcript + " ";
           } else {
@@ -177,6 +196,11 @@ export function useSpeechRecognition(
         setTranscript(finalTranscriptLocal.trim());
         setInterimTranscript(interimTranscriptLocal);
         lastSpeechTimeRef.current = Date.now();
+        
+        console.log("[useSpeechRecognition] Updated transcript:", {
+          final: finalTranscriptLocal.trim(),
+          interim: interimTranscriptLocal
+        });
 
         if (clearTimeoutRef.current) {
           clearTimeout(clearTimeoutRef.current);
@@ -191,6 +215,7 @@ export function useSpeechRecognition(
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        console.error("[useSpeechRecognition] Error event:", event.error, event.message);
         isStartingRef.current = false;
         
         let shouldRestart = false;
@@ -200,32 +225,43 @@ export function useSpeechRecognition(
           case "network":
             errorMessage = "Network error";
             shouldRestart = restartAttemptsRef.current < maxRestartAttempts;
+            console.warn("[useSpeechRecognition] Network error - will retry");
             break;
           case "not-allowed":
             errorMessage = "Microphone access denied";
+            console.warn("[useSpeechRecognition] Microphone access denied by user");
             break;
           case "service-not-allowed":
             errorMessage = "Speech recognition service not allowed";
+            console.warn("[useSpeechRecognition] Service not allowed");
             break;
           case "bad-grammar":
             shouldRestart = restartAttemptsRef.current < maxRestartAttempts;
+            console.warn("[useSpeechRecognition] Bad grammar - will retry");
             break;
           case "language-not-supported":
             errorMessage = `Language ${language} not supported`;
+            console.warn(`[useSpeechRecognition] Language ${language} not supported`);
             break;
           case "no-speech":
             shouldRestart = enabled && !isManualStopRef.current && restartAttemptsRef.current < maxRestartAttempts;
+            console.warn("[useSpeechRecognition] No speech detected - will retry");
             break;
           case "audio-capture":
             errorMessage = "Audio capture failed";
             shouldRestart = restartAttemptsRef.current < maxRestartAttempts;
+            console.error("[useSpeechRecognition] Audio capture failed");
             break;
           case "aborted":
             shouldRestart = false;
+            console.log("[useSpeechRecognition] Recognition aborted");
             break;
           default:
             shouldRestart = restartAttemptsRef.current < maxRestartAttempts;
+            console.warn("[useSpeechRecognition] Unknown error - will retry");
         }
+
+        console.log("[useSpeechRecognition] Error handling:", { errorMessage, shouldRestart, attempts: restartAttemptsRef.current });
 
         setState(prev => ({
           ...prev,

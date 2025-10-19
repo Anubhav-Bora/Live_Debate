@@ -1,9 +1,1 @@
-{
-  "/api/debates/route": "app/api/debates/route.js",
-  "/api/debates/[id]/route": "app/api/debates/[id]/route.js",
-  "/api/debates/[id]/messages/route": "app/api/debates/[id]/messages/route.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/page": "app/page.js",
-  "/debates/create/page": "app/debates/create/page.js",
-  "/debates/[id]/page": "app/debates/[id]/page.js"
-}
+{}
