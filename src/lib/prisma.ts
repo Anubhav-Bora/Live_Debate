@@ -5,8 +5,6 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 const createPrismaClient = () => {
-  console.log('🗄️ Creating Prisma client...');
-  
   return new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["query", "info", "warn", "error"] : ["error"],
     errorFormat: "pretty",

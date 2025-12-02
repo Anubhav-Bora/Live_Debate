@@ -9,15 +9,6 @@ const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
 const port = process.env.PORT || 3000;
 
-console.log('🚀 Starting server in', dev ? 'development' : 'production', 'mode');
-console.log('🌐 Environment check:', {
-  NODE_ENV: process.env.NODE_ENV,
-  PORT: port,
-  DATABASE_URL: process.env.DATABASE_URL ? 'SET' : 'NOT_SET',
-  CLERK_SECRET_KEY: process.env.CLERK_SECRET_KEY ? 'SET' : 'NOT_SET',
-  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ? 'SET' : 'NOT_SET'
-});
-
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
@@ -26,7 +17,6 @@ try {
   prisma = new PrismaClient({
     log: dev ? ['query', 'info', 'warn', 'error'] : ['error'],
   });
-  console.log('✅ Prisma client initialized');
 } catch (error) {
   console.error('❌ Failed to initialize Prisma client:', error);
   process.exit(1);
@@ -35,8 +25,6 @@ try {
 const debateTimeouts = new Map();
 
 app.prepare().then(() => {
-  console.log('✅ Next.js app prepared');
-  
   cleanupOrphanedDebates();
   
   const server = createServer(async (req, res) => {
@@ -63,17 +51,12 @@ app.prepare().then(() => {
     },
   });
 
-  console.log('✅ Socket.IO server initialized');
-
   const debateTranscripts = {};
 
   io.on('connection', (socket) => {
-    console.log(`🔌 New client connected: ${socket.id}`);
-
     socket.on('join_debate', async ({ debateId, userId, role }) => {
       try {
         socket.join(`debate_${debateId}`);
-        console.log(`User ${userId} joined debate ${debateId} as ${role}`);
         socket.to(`debate_${debateId}`).emit('user_joined', { userId, role });
       } catch (error) {
         console.error('❌ Error joining debate:', {
@@ -108,13 +91,11 @@ app.prepare().then(() => {
           data: { startTime: now, status: 'in-progress' },
         });
         
-        console.log(`✅ Debate ${debateId} started with duration: ${debate.duration}s`);
         io.to(`debate_${debateId}`).emit('debate_started', { startTime: now, duration: debate.duration });
         
         const existingTimeout = debateTimeouts.get(debateId);
         if (existingTimeout) {
           clearTimeout(existingTimeout);
-          console.log(`🧹 Cleared existing timeout for debate ${debateId}`);
         }
         
         const timeoutId = setTimeout(async () => {
@@ -207,28 +188,21 @@ app.prepare().then(() => {
           transcript: debateTranscripts[debateId][role] 
         });
         
-        console.log(`📝 Updated ${role} transcript for debate ${debateId}:`, {
-          newLength: debateTranscripts[debateId][role].length,
-          addedText: transcript.substring(0, 50) + '...'
-        });
       }
     });
 
     socket.on('signal', ({ debateId, userId, signal }) => {
-      console.log(`📡 Signal from ${userId} in debate ${debateId}`);
       socket.to(`debate_${debateId}`).emit('signal', { userId, signal });
     });
 
     socket.on('disconnect', () => {
-      console.log(`❌ Client disconnected: ${socket.id}`);
+      // Handle client disconnect
     });
   });
 
   process.on('SIGTERM', () => {
-    console.log('🛑 Received SIGTERM, cleaning up...');
-    debateTimeouts.forEach((timeoutId, debateId) => {
+    debateTimeouts.forEach((timeoutId) => {
       clearTimeout(timeoutId);
-      console.log(`🧹 Cleared timeout for debate ${debateId}`);
     });
     debateTimeouts.clear();
     
@@ -240,10 +214,8 @@ app.prepare().then(() => {
   });
 
   process.on('SIGINT', () => {
-    console.log('🛑 Received SIGINT, cleaning up...');
-    debateTimeouts.forEach((timeoutId, debateId) => {
+    debateTimeouts.forEach((timeoutId) => {
       clearTimeout(timeoutId);
-      console.log(`🧹 Cleared timeout for debate ${debateId}`);
     });
     debateTimeouts.clear();
     
@@ -259,8 +231,6 @@ app.prepare().then(() => {
       console.error('❌ Server failed to start:', err);
       throw err;
     }
-    console.log(`🚀 Server ready on http://${hostname}:${port}`);
-    console.log(`🔌 Socket.IO server ready on path: /api/socket/io`);
   });
 
   if (prisma) {
@@ -290,7 +260,6 @@ async function endDebate(debateId, io) {
     }
 
     if (existingDebate.status === 'completed') {
-      console.log(`⚠️ Debate ${debateId} already completed`);
       return;
     }
 
@@ -305,12 +274,6 @@ async function endDebate(debateId, io) {
       data: { endTime: end, status: 'completed' },
     });
     
-    console.log(`✅ Debate ${debateId} ended, generating AI feedback...`);
-    console.log(`👥 Participants:`, { 
-      proUser: existingDebate.proUser?.username || 'MISSING', 
-      conUser: existingDebate.conUser?.username || 'MISSING',
-      missingParticipants 
-    });
     io.to(`debate_${debateId}`).emit('debate_ended');
     
     try {
@@ -326,13 +289,6 @@ async function endDebate(debateId, io) {
       
       const transcripts = debateTranscripts[debateId] || { pro: '', con: '' };
       
-      console.log(`📊 Generating feedback for debate ${debateId}:`, {
-        messageCount: messages.length,
-        proTranscriptLength: transcripts.pro.length,
-        conTranscriptLength: transcripts.con.length,
-        missingParticipants
-      });
-      
       // Generate AI feedback
       let aiFeedback = await getAIFeedback(messages, transcripts, missingParticipants);
       
@@ -342,13 +298,9 @@ async function endDebate(debateId, io) {
         data: { aiFeedback },
       });
       
-      console.log(`✅ AI feedback generated and saved for debate ${debateId}`);
-      
       // If both participants joined, save scores to leaderboard
       if (!missingParticipants.length && aiFeedback.pro && aiFeedback.con) {
         try {
-          console.log(`💾 Saving scores to leaderboard for debate ${debateId}...`);
-          
           // Save Pro player score
           if (existingDebate.proUser && aiFeedback.pro.score) {
             await prisma.score.create({
@@ -361,7 +313,6 @@ async function endDebate(debateId, io) {
                 tone: Math.floor(aiFeedback.pro.tone || aiFeedback.pro.score)
               }
             });
-            console.log(`✅ Pro score saved for ${existingDebate.proUser.username}`);
           }
           
           // Save Con player score
@@ -376,13 +327,12 @@ async function endDebate(debateId, io) {
                 tone: Math.floor(aiFeedback.con.tone || aiFeedback.con.score)
               }
             });
-            console.log(`✅ Con score saved for ${existingDebate.conUser.username}`);
           }
         } catch (scoreErr) {
           console.error(`❌ Error saving scores for debate ${debateId}:`, scoreErr.message);
         }
       } else if (missingParticipants.length) {
-        console.log(`⚠️ Skipping score save - missing participants: ${missingParticipants.join(', ')}`);
+        // Missing participants, skipping score save
       }
       
       io.to(`debate_${debateId}`).emit('debate_feedback', aiFeedback);
@@ -416,7 +366,6 @@ async function endDebate(debateId, io) {
     
   } catch (dbErr) {
     if (dbErr.code === 'P2025' || dbErr.message.includes('No record was found for an update')) {
-      console.log(`⚠️ Debate ${debateId} not found for update - might have been cleaned up already`);
       return;
     }
     
@@ -463,9 +412,8 @@ async function cleanupOrphanedDebates() {
         }
       });
       
-      console.log(`✅ Cleaned up ${orphanedDebates.length} orphaned debates`);
     } else {
-      console.log('✅ No orphaned debates found');
+      // No orphaned debates found
     }
     
   } catch (error) {
@@ -539,9 +487,6 @@ IMPORTANT: Respond ONLY in valid JSON with this exact format:
       console.error('❌ Missing OPENROUTER_API_KEY environment variable');
       throw new Error('Missing OPENROUTER_API_KEY environment variable');
     }
-
-    console.log('🤖 Sending request to OpenRouter API...');
-    console.log(`📝 Prompt: Analyzing debate with ${messages.length} messages and ${transcripts.pro?.length || 0} chars pro, ${transcripts.con?.length || 0} chars con`);
     
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -577,8 +522,6 @@ IMPORTANT: Respond ONLY in valid JSON with this exact format:
     if (!aiText) {
       throw new Error('Empty response from AI');
     }
-    
-    console.log('🤖 Raw AI response:', aiText.substring(0, 200) + '...');
 
     let feedback;
     try {
@@ -607,18 +550,10 @@ IMPORTANT: Respond ONLY in valid JSON with this exact format:
       feedback.pro = ensureFields(feedback.pro);
       feedback.con = ensureFields(feedback.con);
       
-      console.log('✅ Successfully parsed AI feedback:', {
-        proScore: feedback.pro.score,
-        conScore: feedback.con.score,
-        proLogic: feedback.pro.logic,
-        conLogic: feedback.con.logic
-      });
-      
       return feedback;
       
     } catch (parseErr) {
       console.error('❌ Failed to parse AI response:', parseErr.message);
-      console.error('Raw response:', aiText);
       throw parseErr;
     }
     

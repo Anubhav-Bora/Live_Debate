@@ -41,7 +41,7 @@ interface SpeechRecognitionInstance {
 }
 
 interface SpeechRecognitionConstructor {
-  new (): SpeechRecognitionInstance;
+  new(): SpeechRecognitionInstance;
 }
 
 // Use type assertion to avoid TypeScript conflicts with existing Window interface
@@ -155,16 +155,12 @@ export function useAdvancedSpeechRecognition(
         setInterimTranscript(interimText);
         lastSpeechTimeRef.current = Date.now();
 
+        // Don't stop on silence - keep listening continuously
         // Reset silence timeout on speech
         if (silenceTimeoutRef.current) {
           clearTimeout(silenceTimeoutRef.current);
+          silenceTimeoutRef.current = null;
         }
-        silenceTimeoutRef.current = setTimeout(() => {
-          console.log("[Speech Recognition] 🔇 Silence detected (2s) - stopping");
-          if (recognitionRef.current && !isManualStopRef.current) {
-            recognitionRef.current.stop();
-          }
-        }, 2000);
       };
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
@@ -175,9 +171,9 @@ export function useAdvancedSpeechRecognition(
 
         switch (event.error) {
           case "no-speech":
-            errorMsg = "No speech detected. Speak clearly into your microphone.";
+            errorMsg = ""; // Don't show error for no-speech, just restart
             shouldRestart = attemptCountRef.current < MAX_ATTEMPTS && enabled && !isManualStopRef.current;
-            console.warn("[Speech Recognition] No speech - will retry");
+            console.warn("[Speech Recognition] No speech detected - will auto-restart");
             break;
 
           case "audio-capture":
@@ -238,13 +234,14 @@ export function useAdvancedSpeechRecognition(
         setState(prev => ({ ...prev, isListening: false }));
         recognitionRef.current = null;
 
-        if (enabled && !isManualStopRef.current && attemptCountRef.current < MAX_ATTEMPTS) {
-          console.log("[Speech Recognition] Auto-restarting recognition");
+        // Always auto-restart if enabled and not manually stopped
+        if (enabled && !isManualStopRef.current) {
+          console.log("[Speech Recognition] Auto-restarting recognition in 300ms");
           restartTimeoutRef.current = setTimeout(() => {
             if (enabled && !isManualStopRef.current) {
               initializeRecognition();
             }
-          }, 500);
+          }, 300);
         }
       };
 
@@ -306,9 +303,9 @@ export function useAdvancedSpeechRecognition(
       })
       .catch(error => {
         console.error("[Speech Recognition] ❌ Microphone error:", error.name, error.message);
-        
+
         let friendlyMessage = "";
-        
+
         // Provide specific guidance based on error type
         if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
           friendlyMessage = "Microphone permission denied. Please allow microphone access in Chrome settings (top-right menu → Settings → Privacy and security → Site settings → Microphone)";
@@ -319,7 +316,7 @@ export function useAdvancedSpeechRecognition(
         } else {
           friendlyMessage = `Microphone error: ${error.message}`;
         }
-        
+
         setState(prev => ({
           ...prev,
           hasError: true,

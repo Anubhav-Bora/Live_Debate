@@ -20,7 +20,6 @@ interface DebateRequestBody {
 
 export async function GET() {
   try {
-    console.log('🔍 GET /api/debates - Starting fetch');
     const debates = await prisma.debate.findMany({
       include: {
         proUser: {
@@ -43,7 +42,6 @@ export async function GET() {
       },
       orderBy: { createdAt: 'desc' }
     });
-    console.log(`✅ GET /api/debates - Successfully fetched ${debates.length} debates`);
     return NextResponse.json(debates);
   } catch (error) {
     console.error("❌ GET /api/debates - Error fetching debates:", {
@@ -64,16 +62,9 @@ export async function POST(req: Request) {
   let requestBody: DebateRequestBody;
   
   try {
-    console.log('🚀 POST /api/debates - Starting debate creation');
-    
     // Parse request body
     try {
       requestBody = await req.json() as DebateRequestBody;
-      console.log('📥 POST /api/debates - Request body parsed:', { 
-        topic: requestBody.topic, 
-        duration: requestBody.duration, 
-        isPublic: requestBody.isPublic
-      });
     } catch (parseError) {
       console.error('❌ POST /api/debates - Failed to parse request body:', parseError);
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
@@ -87,41 +78,28 @@ export async function POST(req: Request) {
     const { duration, isPublic } = body;
     
     // Check authentication
-    console.log('🔐 POST /api/debates - Checking authentication');
     let authSession;
     try {
       authSession = await auth();
       userId = authSession.userId || undefined;
-      console.log('🔐 POST /api/debates - Auth result:', { 
-        hasUserId: !!userId, 
-        userIdLength: userId?.length || 0 
-      });
     } catch (authError) {
       console.error('❌ POST /api/debates - Authentication error:', authError);
       return NextResponse.json({ error: "Authentication failed" }, { status: 500 });
     }
 
     if (!userId) {
-      console.log('❌ POST /api/debates - No user ID found in auth session');
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Validate topic
     if (!topic || typeof topic !== 'string' || topic.trim().length < 1) {
-      console.log('❌ POST /api/debates - Invalid topic:', { topic, type: typeof topic });
       return NextResponse.json({ error: "Debate topic is required." }, { status: 400 });
     }
 
     // Ensure user exists
-    console.log('👤 POST /api/debates - Ensuring user exists for userId:', userId);
     let user;
     try {
       user = await ensureUserExists(userId);
-      console.log('✅ POST /api/debates - User ensured:', { 
-        id: user.id, 
-        username: user.username, 
-        clerkId: user.clerkId 
-      });
     } catch (syncError) {
       console.error("❌ POST /api/debates - Error syncing user from Clerk:", {
         error: syncError instanceof Error ? syncError.stack || syncError.message : syncError,
@@ -141,8 +119,6 @@ export async function POST(req: Request) {
       proUserId: user.id,
       proDisplayName: user.email
     };
-    
-    console.log('📝 POST /api/debates - Creating debate with data:', debateData);
 
     // Create debate
     let newDebate;
@@ -153,11 +129,6 @@ export async function POST(req: Request) {
           proUser: true,
           creator: true
         }
-      });
-      console.log('✅ POST /api/debates - Debate created successfully:', { 
-        id: newDebate.id, 
-        topic: newDebate.topic,
-        joinCodeCon: newDebate.joinCodeCon 
       });
     } catch (dbError) {
       console.error('❌ POST /api/debates - Database error creating debate:', {
