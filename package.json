@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=18.18.0"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "node server.js",
-    "build": "next build",
-    "start": "node server.js --production",
+    "build": "prisma generate && next build",
+    "start": "prisma migrate deploy && node server.js --production",
+    "postinstall": "prisma generate",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "check": "npm run lint && npm run typecheck && npm run build",
