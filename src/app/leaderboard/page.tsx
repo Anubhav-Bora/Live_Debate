@@ -1,15 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { CardContent } from "@/components/ui/card"
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table"
+import { useCallback, useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
+import Link from "next/link"
+import { ArrowUpRight, Award, Crown, Medal, RefreshCw, Sparkles, Target, Trophy, Users } from "lucide-react"
 import { AnimatedBackground } from "@/components/ui/animated-background"
-import { GlowCard } from "@/components/ui/glow-card"
-import { NeonButton } from "@/components/ui/neon-button"
-import { Trophy, Medal, Award, TrendingUp, Users, Target, Calendar, Crown } from "lucide-react"
+import { useSocket } from "@/context/SocketContext"
+import { cn } from "@/lib/utils"
 
 interface UserScore {
   id: string
@@ -21,274 +18,140 @@ interface UserScore {
 
 type TimeRange = "week" | "month" | "all"
 
+const ranges: Array<{ value: TimeRange; label: string }> = [
+  { value: "week", label: "7 days" },
+  { value: "month", label: "30 days" },
+  { value: "all", label: "All time" },
+]
+
 export default function LeaderboardPage() {
+  const { socket } = useSocket()
   const [users, setUsers] = useState<UserScore[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [timeRange, setTimeRange] = useState<TimeRange>("week")
+  const [error, setError] = useState("")
 
-  useEffect(() => {
-    const fetchLeaderboard = async () => {
-      try {
-        setLoading(true)
-        const res = await fetch(`/api/leaderboard?range=${timeRange}`)
-        if (res.ok) {
-          const data = await res.json()
-          setUsers(data)
-        }
-      } catch (error) {
-        console.error("Error fetching leaderboard:", error)
-      } finally {
-        setLoading(false)
-      }
+  const fetchLeaderboard = useCallback(async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true)
+      else setRefreshing(true)
+      setError("")
+      const response = await fetch(`/api/leaderboard?range=${timeRange}`, { cache: "no-store" })
+      if (!response.ok) throw new Error("Could not load leaderboard")
+      const data = await response.json()
+      setUsers(Array.isArray(data.leaderboard) ? data.leaderboard : [])
+    } catch (fetchError) {
+      console.error("Error fetching leaderboard:", fetchError)
+      setError("Rankings could not be refreshed. Existing results are still shown.")
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
     }
-
-    fetchLeaderboard()
   }, [timeRange])
 
-  const getMedalConfig = (index: number) => {
-    switch (index) {
-      case 0:
-        return {
-          emoji: "🥇",
-          color: "from-yellow-400 to-yellow-600",
-          glow: "rgba(251, 191, 36, 0.4)",
-          icon: <Crown className="w-6 h-6" />,
-        }
-      case 1:
-        return {
-          emoji: "🥈",
-          color: "from-gray-300 to-gray-500",
-          glow: "rgba(156, 163, 175, 0.4)",
-          icon: <Medal className="w-6 h-6" />,
-        }
-      case 2:
-        return {
-          emoji: "🥉",
-          color: "from-amber-600 to-amber-800",
-          glow: "rgba(217, 119, 6, 0.4)",
-          icon: <Award className="w-6 h-6" />,
-        }
-      default:
-        return {
-          emoji: index + 1,
-          color: "from-indigo-500 to-purple-600",
-          glow: "rgba(99, 102, 241, 0.3)",
-          icon: <Target className="w-5 h-5" />,
-        }
-    }
-  }
+  useEffect(() => { fetchLeaderboard() }, [fetchLeaderboard])
 
-  const timeRangeOptions = [
-    { value: "week", label: "This Week", icon: <Calendar className="w-4 h-4" /> },
-    { value: "month", label: "This Month", icon: <Calendar className="w-4 h-4" /> },
-    { value: "all", label: "All Time", icon: <TrendingUp className="w-4 h-4" /> },
-  ]
+  useEffect(() => {
+    if (!socket) return
+    const refresh = () => fetchLeaderboard(false)
+    socket.on("dashboard_updated", refresh)
+    return () => { socket.off("dashboard_updated", refresh) }
+  }, [fetchLeaderboard, socket])
+
+  useEffect(() => {
+    const interval = setInterval(() => fetchLeaderboard(false), 30_000)
+    return () => clearInterval(interval)
+  }, [fetchLeaderboard])
+
+  const debateTotal = users.reduce((sum, user) => sum + user.debateCount, 0)
+  const averageScore = users.length ? users.reduce((sum, user) => sum + user.totalScore, 0) / users.length : 0
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden">
       <AnimatedBackground />
+      <div className="relative z-10 mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16">
+        <motion.header initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-end">
+          <div>
+            <p className="section-kicker">Performance index</p>
+            <h1 className="font-editorial mt-4 text-balance text-4xl tracking-[-0.035em] text-[#f4f3ef] sm:text-5xl">The strongest cases rise.</h1>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-500">Rankings use the average of logic, clarity, persuasion, and tone across judged debates.</p>
+          </div>
+          <div className="inline-flex w-fit items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.035] p-1">
+            {ranges.map((range) => (
+              <button key={range.value} type="button" onClick={() => setTimeRange(range.value)} className={cn("rounded-lg px-4 py-2 text-xs font-semibold transition", timeRange === range.value ? "bg-white/[0.11] text-white shadow-sm" : "text-slate-500 hover:text-slate-200")}>{range.label}</button>
+            ))}
+          </div>
+        </motion.header>
 
-      <div className="relative z-10 container mx-auto px-4 py-8">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 flex items-center justify-center gap-3">
-            <Trophy className="w-12 h-12 text-yellow-400" />
-            Hall of Fame
-          </h1>
-          <p className="text-xl text-gray-300">Champions of intellectual discourse</p>
-        </motion.div>
+        <div className="mt-10 grid gap-3 sm:grid-cols-3">
+          <Metric icon={Users} label="Ranked debaters" value={users.length.toString()} />
+          <Metric icon={Target} label="Judged entries" value={debateTotal.toString()} />
+          <Metric icon={Sparkles} label="Community average" value={averageScore ? averageScore.toFixed(1) : "—"} />
+        </div>
 
-        {/* Time Range Selector */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-          className="flex justify-center mb-8"
-        >
-          <GlowCard>
-            <div className="flex gap-2">
-              {timeRangeOptions.map((option) => (
-                <NeonButton
-                  key={option.value}
-                  variant={timeRange === option.value ? "primary" : "outline"}
-                  onClick={() => setTimeRange(option.value as TimeRange)}
-                >
-                  {option.icon}
-                  <span className="ml-2">{option.label}</span>
-                </NeonButton>
-              ))}
-            </div>
-          </GlowCard>
-        </motion.div>
+        {error && <div className="mt-6 flex items-center justify-between gap-4 rounded-xl border border-rose-300/15 bg-rose-400/[0.07] px-4 py-3 text-sm text-rose-100"><span>{error}</span><button type="button" onClick={() => fetchLeaderboard(false)} className="font-semibold hover:text-white">Retry</button></div>}
 
-        {/* Leaderboard */}
-        {loading ? (
-          <GlowCard>
-            <CardContent className="p-6 space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="flex items-center space-x-4">
-                  <Skeleton className="h-12 w-12 rounded-full bg-white/10" />
-                  <div className="space-y-2 flex-1">
-                    <Skeleton className="h-4 w-32 bg-white/10" />
-                    <Skeleton className="h-3 w-24 bg-white/10" />
-                  </div>
-                  <Skeleton className="h-8 w-16 bg-white/10" />
-                </div>
-              ))}
-            </CardContent>
-          </GlowCard>
+        {loading ? <LeaderboardSkeleton /> : users.length === 0 ? (
+          <div className="surface-card mt-8 flex min-h-80 flex-col items-center justify-center px-6 text-center">
+            <Trophy className="h-8 w-8 text-amber-300" />
+            <h2 className="mt-5 text-xl font-semibold text-white">The table is open</h2>
+            <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">Complete a judged debate to become the first ranked speaker in this period.</p>
+            <Link href="/debates" className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#8aa7ed] hover:text-[#a5b9ea]">Explore arenas <ArrowUpRight className="h-4 w-4" /></Link>
+          </div>
         ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.3 }}>
-            {users.length === 0 ? (
-              <GlowCard className="text-center py-16">
-                <Users className="w-16 h-16 mx-auto mb-4 text-indigo-400 opacity-50" />
-                <h3 className="text-2xl font-bold text-white mb-2">No Champions Yet</h3>
-                <p className="text-gray-300">Participate in debates to appear on the leaderboard</p>
-              </GlowCard>
-            ) : (
-              <>
-                {/* Top 3 Podium */}
-                {users.length >= 3 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4 }}
-                    className="mb-12"
-                  >
-                    <div className="flex justify-center items-end gap-8 mb-8">
-                      {/* Second Place */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 50 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.6 }}
-                        className="text-center"
-                      >
-                        <GlowCard glowColor={getMedalConfig(1).glow} className="p-6">
-                          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-r from-gray-300 to-gray-500 flex items-center justify-center text-white font-bold text-2xl">
-                            {users[1].username.charAt(0).toUpperCase()}
-                          </div>
-                          <h3 className="text-lg font-bold text-white mb-1">{users[1].username}</h3>
-                          <Badge className="bg-gradient-to-r from-gray-300 to-gray-500 text-white mb-2">
-                            {users[1].totalScore.toFixed(1)} pts
-                          </Badge>
-                          <div className="text-4xl mb-2">🥈</div>
-                          <div className="text-sm text-gray-400">{users[1].debateCount} debates</div>
-                        </GlowCard>
-                      </motion.div>
+          <>
+            <section className="mt-8 grid gap-4 lg:grid-cols-3">
+              {users.slice(0, 3).map((user, index) => <PodiumCard key={user.id} user={user} rank={index + 1} />)}
+            </section>
 
-                      {/* First Place */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 50 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 }}
-                        className="text-center"
-                      >
-                        <GlowCard glowColor={getMedalConfig(0).glow} className="p-8 scale-110">
-                          <Crown className="w-8 h-8 mx-auto mb-2 text-yellow-400" />
-                          <div className="w-24 h-24 mx-auto mb-4 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600 flex items-center justify-center text-white font-bold text-3xl animate-pulse-glow">
-                            {users[0].username.charAt(0).toUpperCase()}
-                          </div>
-                          <h3 className="text-xl font-bold text-white mb-2">{users[0].username}</h3>
-                          <Badge className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-white mb-3 text-lg px-4 py-1">
-                            {users[0].totalScore.toFixed(1)} pts
-                          </Badge>
-                          <div className="text-5xl mb-2">🥇</div>
-                          <div className="text-sm text-gray-400">{users[0].debateCount} debates</div>
-                        </GlowCard>
-                      </motion.div>
-
-                      {/* Third Place */}
-                      <motion.div
-                        initial={{ opacity: 0, y: 50 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.7 }}
-                        className="text-center"
-                      >
-                        <GlowCard glowColor={getMedalConfig(2).glow} className="p-6">
-                          <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gradient-to-r from-amber-600 to-amber-800 flex items-center justify-center text-white font-bold text-2xl">
-                            {users[2].username.charAt(0).toUpperCase()}
-                          </div>
-                          <h3 className="text-lg font-bold text-white mb-1">{users[2].username}</h3>
-                          <Badge className="bg-gradient-to-r from-amber-600 to-amber-800 text-white mb-2">
-                            {users[2].totalScore.toFixed(1)} pts
-                          </Badge>
-                          <div className="text-4xl mb-2">🥉</div>
-                          <div className="text-sm text-gray-400">{users[2].debateCount} debates</div>
-                        </GlowCard>
-                      </motion.div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* Full Leaderboard Table */}
-                <GlowCard>
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-white/10">
-                        <TableHead className="text-gray-300 font-semibold">Rank</TableHead>
-                        <TableHead className="text-gray-300 font-semibold">Debater</TableHead>
-                        <TableHead className="text-right text-gray-300 font-semibold">Score</TableHead>
-                        <TableHead className="text-right text-gray-300 font-semibold">Debates</TableHead>
-                        <TableHead className="text-right text-gray-300 font-semibold">Badges</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {users.map((user, index) => {
-                        const medalConfig = getMedalConfig(index)
-
-                        return (
-                          <motion.tr
-                            key={user.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.3, delay: 0.5 + index * 0.05 }}
-                            className="border-white/5 hover:bg-white/5 transition-colors"
-                          >
-                            <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                {index < 3 ? (
-                                  <div
-                                    className={`w-8 h-8 rounded-full bg-gradient-to-r ${medalConfig.color} flex items-center justify-center text-white font-bold`}
-                                  >
-                                    {typeof medalConfig.emoji === "string" ? medalConfig.emoji : index + 1}
-                                  </div>
-                                ) : (
-                                  <div className="w-8 h-8 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
-                                    {index + 1}
-                                  </div>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center space-x-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                                  {user.username.charAt(0).toUpperCase()}
-                                </div>
-                                <span className="text-white font-medium">{user.username}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Badge variant="outline" className="px-3 py-1 text-indigo-300 border-indigo-500/30">
-                                {user.totalScore.toFixed(1)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right text-gray-300">{user.debateCount}</TableCell>
-                            <TableCell className="text-right">
-                              <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30">
-                                {user.badges}
-                              </Badge>
-                            </TableCell>
-                          </motion.tr>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </GlowCard>
-              </>
-            )}
-          </motion.div>
+            <section className="surface-card mt-6 overflow-hidden">
+              <div className="flex items-center justify-between border-b border-white/[0.07] px-5 py-4 sm:px-6">
+                <div><p className="text-sm font-semibold text-white">Full standings</p><p className="mt-0.5 text-xs text-slate-600">Updated automatically after every judgement</p></div>
+                <RefreshCw className={cn("h-4 w-4 text-slate-600", refreshing && "animate-spin text-[#829ee3]")} />
+              </div>
+              <div className="divide-y divide-white/[0.06]">
+                {users.map((user, index) => <RankingRow key={user.id} user={user} rank={index + 1} index={index} />)}
+              </div>
+            </section>
+          </>
         )}
       </div>
     </div>
   )
+}
+
+function Metric({ icon: Icon, label, value }: { icon: typeof Users; label: string; value: string }) {
+  return <div className="surface-card flex items-center gap-4 px-5 py-4"><span className="grid h-10 w-10 place-items-center rounded-lg border border-[#303744] bg-[#171c24]"><Icon className="h-4 w-4 text-[#829ee3]" /></span><div><p className="text-xl font-bold tracking-tight text-white">{value}</p><p className="text-xs text-slate-500">{label}</p></div></div>
+}
+
+function PodiumCard({ user, rank }: { user: UserScore; rank: number }) {
+  const config = rank === 1
+    ? { title: "Current leader", Icon: Crown, color: "text-amber-300", surface: "border-amber-200/[0.14] bg-[#171815]" }
+    : rank === 2
+      ? { title: "Second place", Icon: Medal, color: "text-slate-300", surface: "bg-[#141820]" }
+      : { title: "Third place", Icon: Award, color: "text-orange-300", surface: "bg-[#161715]" }
+  return (
+    <motion.article initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: rank * 0.04 }} className={cn("surface-card p-6", config.surface)}>
+      <div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{config.title}</span><config.Icon className={cn("h-5 w-5", config.color)} /></div>
+      <div className="mt-7 flex items-center gap-4"><span className="grid h-12 w-12 place-items-center rounded-lg border border-[#303744] bg-[#202630] text-lg font-bold text-white">{user.username.charAt(0).toUpperCase()}</span><div className="min-w-0"><Link href={`/profile/${user.id}`} className="truncate text-lg font-semibold text-white hover:text-[#a5b9ea]">{user.username}</Link><p className="mt-1 text-xs text-slate-500">{user.debateCount} judged {user.debateCount === 1 ? "debate" : "debates"}</p></div></div>
+      <div className="mt-7 flex items-end justify-between border-t border-white/[0.07] pt-5"><span className="text-xs text-slate-500">Average score</span><span className="text-3xl font-semibold tracking-[-0.04em] text-white">{user.totalScore.toFixed(1)}<span className="ml-1 text-xs font-normal text-slate-600">/ 10</span></span></div>
+    </motion.article>
+  )
+}
+
+function RankingRow({ user, rank, index }: { user: UserScore; rank: number; index: number }) {
+  return (
+    <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3, delay: Math.min(index * 0.025, 0.3) }} className="grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 px-4 py-4 transition hover:bg-white/[0.025] sm:grid-cols-[3rem_1fr_8rem_8rem_5rem] sm:px-6">
+      <span className={cn("font-mono text-xs", rank <= 3 ? "font-bold text-[#829ee3]" : "text-slate-600")}>{String(rank).padStart(2, "0")}</span>
+      <div className="flex min-w-0 items-center gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#202630] text-xs font-bold text-slate-300">{user.username.charAt(0).toUpperCase()}</span><Link href={`/profile/${user.id}`} className="truncate text-sm font-semibold text-slate-200 transition hover:text-[#a5b9ea]">{user.username}</Link></div>
+      <div className="text-right"><span className="text-sm font-bold text-white">{user.totalScore.toFixed(1)}</span><span className="ml-1 text-[10px] text-slate-600">pts</span></div>
+      <div className="hidden text-right text-xs text-slate-500 sm:block">{user.debateCount} debates</div>
+      <div className="hidden items-center justify-end gap-1 text-xs text-slate-500 sm:flex"><Award className="h-3.5 w-3.5 text-[#829ee3]" />{user.badges}</div>
+    </motion.div>
+  )
+}
+
+function LeaderboardSkeleton() {
+  return <div className="mt-8 space-y-6"><div className="grid gap-4 lg:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <div key={index} className="surface-card h-56 animate-pulse bg-white/[0.025]" />)}</div><div className="surface-card h-96 animate-pulse bg-white/[0.025]" /></div>
 }

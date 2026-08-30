@@ -1,66 +1,36 @@
 import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
+import { allowRequest } from "@/lib/rateLimit";
 
-export async function POST(req: Request) {
+export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!allowRequest(`topic:${user.id}`, 5, 60_000)) {
+    return NextResponse.json({ error: "Please wait before generating another topic." }, { status: 429 });
+  }
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return NextResponse.json({ error: "AI is not configured" }, { status: 503 });
+
   try {
-    const { transcript, debateTopic } = await req.json();
-
-    if (!transcript || !debateTopic) {
-      return NextResponse.json(
-        { error: "Transcript and debate topic are required" },
-        { status: 400 }
-      );
-    }
-
-    const prompt = `
-    Analyze this debate transcript and provide detailed feedback on both participants' performance.
-    
-    Debate Topic: ${debateTopic}
-    
-    Transcript:
-    ${transcript}
-    
-    Provide scores (1-10) in this exact format:
-    [Participant 1]
-    Argument Structure: [score]/10
-    Logical Consistency: [score]/10
-    Persuasiveness: [score]/10
-    Tone and Delivery: [score]/10
-    
-    [Participant 2]
-    Argument Structure: [score]/10
-    Logical Consistency: [score]/10
-    Persuasiveness: [score]/10
-    Tone and Delivery: [score]/10
-    
-    3 improvement suggestions for each participant.
-    `;
-
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const body = (await request.json()) as { category?: unknown };
+    const category = typeof body.category === "string" ? body.category.trim().slice(0, 60) : "general";
+    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "mistralai/mistral-7b-instruct", // Free model
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
-        max_tokens: 1500
-      })
+        contents: [{ role: "user", parts: [{ text: `Create one balanced, specific debate motion in the ${category} category. Return only the motion, under 180 characters.` }] }],
+        generationConfig: { temperature: 0.8, maxOutputTokens: 80 },
+      }),
+      signal: AbortSignal.timeout(15_000),
     });
-
+    if (!response.ok) throw new Error(`Provider returned ${response.status}`);
     const data = await response.json();
-    const analysis = data.choices[0]?.message?.content;
-
-    if (!analysis) {
-      throw new Error("No analysis generated");
-    }
-
-    return NextResponse.json({ analysis });
+    const topic = data?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || "").join("").trim().replace(/^['"]|['"]$/g, "").slice(0, 240);
+    if (!topic) throw new Error("No topic returned");
+    return NextResponse.json({ topic });
   } catch (error) {
-    console.error("Error analyzing debate:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("Could not generate topic:", error);
+    return NextResponse.json({ error: "Could not generate a topic" }, { status: 502 });
   }
 }

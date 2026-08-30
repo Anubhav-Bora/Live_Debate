@@ -1,299 +1,207 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowRight, BarChart3, Check, Clock3, FileText, LockKeyhole, MessageSquareText, Mic2, Radio, Scale, ShieldCheck, Users, Video } from "lucide-react";
+import { AnimatedBackground } from "@/components/ui/animated-background";
+import { useAuth } from "@/context/AuthContext";
 
-import { SignedIn, SignedOut, SignInButton } from "@clerk/nextjs"
-import { motion } from "framer-motion"
-import Link from "next/link"
-import { CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { useState } from "react"
-import { AnimatedBackground } from "@/components/ui/animated-background"
-import { GlowCard } from "@/components/ui/glow-card"
-import { NeonButton } from "@/components/ui/neon-button"
-import { Sparkles, Zap, Trophy, MessageSquare, Brain, Users } from "lucide-react"
+const workflow = [
+  { number: "01", title: "Set the motion", copy: "Create a private or public room, choose the duration, and invite the opposing speaker." },
+  { number: "02", title: "Make the case", copy: "Debate face to face while the application keeps time and captures each side separately." },
+  { number: "03", title: "Review the result", copy: "Receive a structured decision, category scores, and concrete areas for improvement." },
+];
+
+const capabilities = [
+  { icon: Video, title: "Live rooms", copy: "Peer-to-peer video with participant readiness and reliable room controls." },
+  { icon: Mic2, title: "Separate transcripts", copy: "Speech is attributed to Pro and Con throughout the session." },
+  { icon: Scale, title: "Consistent judging", copy: "Both arguments are measured against the same scoring framework." },
+  { icon: BarChart3, title: "Performance record", copy: "Results update profiles and standings as soon as judging is complete." },
+];
 
 export default function Home() {
-  const [debateId, setDebateId] = useState("")
+  const router = useRouter();
+  const { user, isLoaded } = useAuth();
+  const [debateId, setDebateId] = useState("");
 
-  const handleJoinDebate = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (debateId) {
-      window.location.href = `/debates/${debateId}`
-    }
-  }
+  const joinDebate = (event: React.FormEvent) => {
+    event.preventDefault();
+    const id = debateId.trim();
+    if (id) router.push(`/debates/${encodeURIComponent(id)}`);
+  };
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden">
       <AnimatedBackground />
 
-      <main className="relative z-10 container mx-auto px-4 py-16">
-        {/* Hero Section */}
-        <section className="text-center mb-20 relative">
-          <motion.div
-            initial={{ opacity: 0, y: -50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="mb-8"
-          >
-            <h1 className="text-6xl md:text-8xl font-bold mb-6 bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 neon-text">
-              AI Debate Arena
-            </h1>
-            <div className="flex items-center justify-center gap-2 mb-6">
-              <Sparkles className="w-6 h-6 text-indigo-400 animate-pulse" />
-              <span className="text-xl text-gray-300">Powered by Artificial Intelligence</span>
-              <Sparkles className="w-6 h-6 text-purple-400 animate-pulse" />
+      <section className="relative z-10 mx-auto grid max-w-7xl items-center gap-14 px-4 pb-20 pt-16 sm:px-6 sm:pt-24 lg:min-h-[calc(100vh-4rem)] lg:grid-cols-[1fr_.92fr] lg:py-24">
+        <div>
+          <div className="mb-7 flex items-center gap-3 text-sm font-medium text-slate-400">
+            <span className="h-px w-8 bg-[#5d86ed]" />
+            A serious space for live debate
+          </div>
+          <h1 className="font-editorial max-w-3xl text-balance text-5xl leading-[1.02] tracking-[-0.045em] text-[#f4f3ef] sm:text-6xl lg:text-7xl">
+            Better arguments deserve a clear outcome.
+          </h1>
+          <p className="mt-7 max-w-xl text-pretty text-base leading-7 text-slate-400 sm:text-lg sm:leading-8">
+            Host focused video debates, preserve the record, and receive structured feedback on logic, clarity, persuasion, and tone.
+          </p>
+
+          <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+            {isLoaded && user ? (
+              <>
+                <Link href="/debates/create" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#4f73d9] px-6 text-sm font-semibold text-white transition hover:bg-[#5a7ee0]">
+                  Create a debate <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link href="/debates" className="inline-flex h-12 items-center justify-center rounded-lg border border-[#303744] bg-[#141820] px-6 text-sm font-semibold text-slate-200 transition hover:border-[#424b5a] hover:bg-[#181d25]">
+                  View open debates
+                </Link>
+              </>
+            ) : isLoaded ? (
+              <>
+                <Link href="/sign-up" className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-[#4f73d9] px-6 text-sm font-semibold text-white transition hover:bg-[#5a7ee0]">
+                  Create an account <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link href="/debates" className="inline-flex h-12 items-center justify-center rounded-lg border border-[#303744] bg-[#141820] px-6 text-sm font-semibold text-slate-200 transition hover:border-[#424b5a] hover:bg-[#181d25]">
+                  Browse as a spectator
+                </Link>
+              </>
+            ) : <span className="h-12 w-52 animate-pulse rounded-lg bg-[#171c24]" />}
+          </div>
+
+          <div className="mt-10 flex flex-wrap gap-x-7 gap-y-3 text-sm text-slate-500">
+            {["No installation", "Private rooms", "Browser-based"].map((item) => (
+              <span key={item} className="inline-flex items-center gap-2"><Check className="h-4 w-4 text-[#7694df]" />{item}</span>
+            ))}
+          </div>
+        </div>
+
+        <div className="mx-auto w-full max-w-xl">
+          <div className="overflow-hidden rounded-xl border border-[#2b323d] bg-[#11151b] shadow-[0_28px_80px_-42px_rgba(0,0,0,.95)]">
+            <div className="flex items-center justify-between border-b border-[#282e38] px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold text-slate-200">Public transport policy</p>
+                <p className="mt-1 text-[11px] text-slate-600">Debate 014 · Public room</p>
+              </div>
+              <span className="inline-flex items-center gap-2 rounded-md border border-rose-400/20 bg-rose-400/[0.07] px-2.5 py-1 text-[11px] font-semibold text-rose-200">
+                <Radio className="h-3 w-3" /> Live
+              </span>
             </div>
-          </motion.div>
 
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto mb-12 leading-relaxed"
-          >
-            Step into the future of intellectual discourse. Engage in real-time debates, receive AI-powered insights,
-            and master the art of persuasion.
-          </motion.p>
+            <div className="p-5 sm:p-6">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-500">Time remaining</p>
+                <span className="flex items-center gap-2 font-mono text-lg font-semibold text-white"><Clock3 className="h-4 w-4 text-slate-500" />04:18</span>
+              </div>
 
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, delay: 0.4 }}
-            className="flex flex-col sm:flex-row justify-center gap-6 mb-16"
-          >
-            <SignedIn>
-              <Link href="/debates/create">
-                <NeonButton size="lg" className="min-w-[200px]">
-                  <Zap className="w-5 h-5 mr-2" />
-                  Create Debate
-                </NeonButton>
-              </Link>
-              <Link href="/debates">
-                <NeonButton variant="outline" size="lg" className="min-w-[200px]">
-                  <MessageSquare className="w-5 h-5 mr-2" />
-                  Browse Debates
-                </NeonButton>
-              </Link>
-            </SignedIn>
-            <SignedOut>
-              <SignInButton mode="modal">
-                <NeonButton size="lg" className="min-w-[200px]">
-                  <Brain className="w-5 h-5 mr-2" />
-                  Enter Arena
-                </NeonButton>
-              </SignInButton>
-              <Link href="/sign-up">
-                <NeonButton variant="outline" size="lg" className="min-w-[200px]">
-                  <Users className="w-5 h-5 mr-2" />
-                  Join Community
-                </NeonButton>
-              </Link>
-            </SignedOut>
-          </motion.div>
+              <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                <Speaker side="Pro" name="Maya Chen" active />
+                <span className="text-[10px] font-semibold text-slate-700">VS</span>
+                <Speaker side="Con" name="Arjun Mehta" />
+              </div>
 
-          {/* Floating orbs */}
-          <div className="absolute top-20 left-10 w-20 h-20 bg-indigo-500/20 rounded-full blur-xl animate-float" />
-          <div
-            className="absolute top-40 right-20 w-32 h-32 bg-purple-500/20 rounded-full blur-xl animate-float"
-            style={{ animationDelay: "2s" }}
-          />
-          <div
-            className="absolute bottom-20 left-1/4 w-16 h-16 bg-pink-500/20 rounded-full blur-xl animate-float"
-            style={{ animationDelay: "4s" }}
-          />
-        </section>
-
-        {/* Join Debate Section */}
-        <motion.section
-          initial={{ opacity: 0, y: 50 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          viewport={{ once: true }}
-          className="mb-20"
-        >
-          <GlowCard className="max-w-md mx-auto">
-            <CardHeader className="text-center">
-              <CardTitle className="text-2xl font-bold text-white mb-2">Quick Join</CardTitle>
-              <CardDescription className="text-gray-300">
-                Enter a debate ID to jump into an ongoing discussion
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleJoinDebate} className="flex gap-3">
-                <Input
-                  placeholder="Debate ID"
-                  value={debateId}
-                  onChange={(e) => setDebateId(e.target.value)}
-                  className="bg-white/5 border-white/20 text-white placeholder:text-gray-400"
-                />
-                <NeonButton type="submit" disabled={!debateId.trim()}>
-                  Join
-                </NeonButton>
-              </form>
-            </CardContent>
-          </GlowCard>
-        </motion.section>
-
-        {/* Features Section */}
-        <section className="mb-20">
-          <motion.h2
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.6 }}
-            viewport={{ once: true }}
-            className="text-4xl font-bold text-center mb-12 text-white"
-          >
-            Experience the Future of Debate
-          </motion.h2>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                title: "Real-Time Debates",
-                description:
-                  "Engage in live, structured debates with participants worldwide using cutting-edge video technology",
-                icon: <MessageSquare className="w-8 h-8" />,
-                color: "rgba(99, 102, 241, 0.3)",
-                gradient: "from-indigo-500 to-blue-600",
-              },
-              {
-                title: "AI-Powered Analysis",
-                description:
-                  "Receive instant, detailed feedback on your arguments, logic, and presentation style from advanced AI",
-                icon: <Brain className="w-8 h-8" />,
-                color: "rgba(139, 92, 246, 0.3)",
-                gradient: "from-purple-500 to-pink-600",
-              },
-              {
-                title: "Global Leaderboard",
-                description: "Climb the ranks, earn badges, and showcase your debating prowess to the world",
-                icon: <Trophy className="w-8 h-8" />,
-                color: "rgba(16, 185, 129, 0.3)",
-                gradient: "from-emerald-500 to-teal-600",
-              },
-            ].map((feature, index) => (
-              <motion.div
-                key={feature.title}
-                initial={{ opacity: 0, y: 50 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: index * 0.2 }}
-                viewport={{ once: true }}
-              >
-                <GlowCard glowColor={feature.color} className="h-full">
-                  <div
-                    className={`w-16 h-16 rounded-full bg-gradient-to-r ${feature.gradient} flex items-center justify-center mb-6 mx-auto`}
-                  >
-                    <div className="text-white">{feature.icon}</div>
-                  </div>
-                  <CardTitle className="text-xl font-bold text-white mb-4 text-center">{feature.title}</CardTitle>
-                  <CardDescription className="text-gray-300 text-center leading-relaxed">
-                    {feature.description}
-                  </CardDescription>
-                </GlowCard>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* How It Works */}
-        <section className="mb-20">
-          <motion.h2
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.6 }}
-            viewport={{ once: true }}
-            className="text-4xl font-bold text-center mb-16 text-white"
-          >
-            Master Debate in 4 Steps
-          </motion.h2>
-
-          <div className="grid md:grid-cols-4 gap-8">
-            {[
-              {
-                step: "01",
-                title: "Create or Join",
-                description: "Start a new debate topic or join an existing discussion",
-                icon: "🚀",
-              },
-              {
-                step: "02",
-                title: "Get Connected",
-                description: "Share your debate ID and connect with your opponent",
-                icon: "🔗",
-              },
-              {
-                step: "03",
-                title: "Debate Live",
-                description: "Engage in structured, timed debates with video and audio",
-                icon: "⚡",
-              },
-              {
-                step: "04",
-                title: "AI Insights",
-                description: "Receive detailed performance analysis and improvement tips",
-                icon: "🧠",
-              },
-            ].map((step, index) => (
-              <motion.div
-                key={step.title}
-                initial={{ opacity: 0, y: 50 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: index * 0.15 }}
-                viewport={{ once: true }}
-                className="text-center relative"
-              >
-                <div className="relative mb-6">
-                  <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-3xl mb-4 animate-pulse-glow">
-                    {step.icon}
-                  </div>
-                  <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-r from-pink-500 to-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white">
-                    {step.step}
-                  </div>
+              <div className="mt-5 rounded-lg border border-[#252b34] bg-[#0d1117] p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-xs font-medium text-slate-400"><FileText className="h-3.5 w-3.5" />Live transcript</span>
+                  <span className="text-[10px] text-slate-600">Speaker: Pro</span>
                 </div>
-                <h3 className="font-bold text-xl mb-3 text-white">{step.title}</h3>
-                <p className="text-gray-300 leading-relaxed">{step.description}</p>
+                <p className="text-sm leading-6 text-slate-300">“Free public transport reduces congestion while expanding access to work and education...”</p>
+                <span className="mt-3 block h-0.5 w-24 bg-[#5d86ed]" />
+              </div>
 
-                {index < 3 && (
-                  <div className="hidden md:block absolute top-10 -right-4 w-8 h-0.5 bg-gradient-to-r from-indigo-500 to-transparent" />
-                )}
-              </motion.div>
+              <div className="mt-5 grid grid-cols-4 divide-x divide-[#282e38] border-t border-[#282e38] pt-5">
+                {[ ["Logic", "8.7"], ["Clarity", "8.4"], ["Persuasion", "8.6"], ["Tone", "8.9"] ].map(([label, value]) => (
+                  <div key={label} className="px-2 text-center first:pl-0 last:pr-0">
+                    <p className="text-lg font-semibold text-slate-100">{value}</p>
+                    <p className="mt-1 text-[10px] text-slate-600">{label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="relative z-10 border-y border-[#242a33] bg-[#0d1117]">
+        <div className="mx-auto grid max-w-7xl divide-y divide-[#242a33] px-4 sm:grid-cols-3 sm:divide-x sm:divide-y-0 sm:px-6">
+          <Fact value="4 criteria" label="used for every decision" />
+          <Fact value="Live record" label="with separate speaker transcripts" />
+          <Fact value="Immediate" label="profile and ranking updates" />
+        </div>
+      </section>
+
+      <section className="relative z-10 mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28">
+        <div className="max-w-2xl">
+          <p className="section-kicker">How it works</p>
+          <h2 className="font-editorial mt-4 text-4xl tracking-[-0.035em] text-[#f4f3ef] sm:text-5xl">From motion to decision.</h2>
+          <p className="mt-4 text-base leading-7 text-slate-500">A simple workflow that keeps attention on the argument rather than the software.</p>
+        </div>
+        <div className="mt-12 grid gap-px overflow-hidden rounded-xl border border-[#282e38] bg-[#282e38] md:grid-cols-3">
+          {workflow.map((item) => (
+            <article key={item.number} className="bg-[#11151b] p-7 sm:p-8">
+              <span className="font-mono text-xs text-[#7593dc]">{item.number}</span>
+              <h3 className="mt-8 text-lg font-semibold text-white">{item.title}</h3>
+              <p className="mt-3 text-sm leading-6 text-slate-500">{item.copy}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="relative z-10 border-y border-[#242a33] bg-[#0d1117]">
+        <div className="mx-auto grid max-w-7xl gap-12 px-4 py-20 sm:px-6 lg:grid-cols-[.8fr_1.2fr] lg:py-24">
+          <div>
+            <p className="section-kicker">Designed for the room</p>
+            <h2 className="font-editorial mt-4 text-4xl leading-tight tracking-[-0.035em] text-[#f4f3ef]">Everything needed to run a credible debate.</h2>
+            <p className="mt-4 text-sm leading-7 text-slate-500">No dashboards full of novelty features. Just the controls, record, and feedback a real session needs.</p>
+          </div>
+          <div className="grid gap-x-10 gap-y-9 sm:grid-cols-2">
+            {capabilities.map(({ icon: Icon, title, copy }) => (
+              <div key={title} className="border-t border-[#303744] pt-5">
+                <Icon className="h-5 w-5 text-[#829ee3]" />
+                <h3 className="mt-4 font-semibold text-slate-100">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{copy}</p>
+              </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* Call to Action */}
-        <motion.section
-          initial={{ opacity: 0, scale: 0.9 }}
-          whileInView={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.8 }}
-          viewport={{ once: true }}
-          className="text-center"
-        >
-          <GlowCard className="max-w-2xl mx-auto">
-            <h2 className="text-4xl font-bold mb-6 text-white">Ready to Elevate Your Voice?</h2>
-            <p className="text-xl text-gray-300 mb-8">
-              Join thousands of debaters sharpening their skills with AI-powered insights
-            </p>
-            <SignedIn>
-              <Link href="/debates/create">
-                <NeonButton size="lg" className="text-xl px-12 py-4">
-                  <Sparkles className="w-6 h-6 mr-2" />
-                  Start Your Journey
-                </NeonButton>
-              </Link>
-            </SignedIn>
-            <SignedOut>
-              <SignInButton mode="modal">
-                <NeonButton size="lg" className="text-xl px-12 py-4">
-                  <Sparkles className="w-6 h-6 mr-2" />
-                  Begin Your Journey
-                </NeonButton>
-              </SignInButton>
-            </SignedOut>
-          </GlowCard>
-        </motion.section>
-      </main>
+      <section className="relative z-10 mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-24">
+        <div className="grid items-center gap-8 rounded-xl border border-[#2b323d] bg-[#12161d] p-6 sm:p-8 lg:grid-cols-[1fr_auto]">
+          <div>
+            <div className="flex items-center gap-3"><MessageSquareText className="h-5 w-5 text-[#829ee3]" /><h2 className="text-xl font-semibold text-white">Already have a room link?</h2></div>
+            <p className="mt-2 text-sm text-slate-500">Enter the debate ID to go directly to the room.</p>
+          </div>
+          <form onSubmit={joinDebate} className="flex w-full max-w-lg gap-2">
+            <input value={debateId} onChange={(event) => setDebateId(event.target.value)} placeholder="Debate ID" aria-label="Debate ID" className="h-11 min-w-0 flex-1 rounded-lg border border-[#303744] bg-[#0d1117] px-4 font-mono text-sm text-white outline-none transition placeholder:font-sans placeholder:text-slate-600 focus:border-[#5d86ed] focus:ring-2 focus:ring-[#5d86ed]/15" />
+            <button type="submit" disabled={!debateId.trim()} className="inline-flex h-11 items-center gap-2 rounded-lg border border-[#303744] bg-[#1a2029] px-5 text-sm font-semibold text-white transition hover:border-[#465064] hover:bg-[#202732] disabled:cursor-not-allowed disabled:opacity-40">Open room <ArrowRight className="h-4 w-4" /></button>
+          </form>
+        </div>
+      </section>
+
+      <footer className="relative z-10 border-t border-[#242a33] bg-[#090b0f]">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-7 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <span className="flex items-center gap-2 font-semibold text-slate-400"><Scale className="h-4 w-4" /> DebateArena</span>
+          <div className="flex gap-5"><span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" />Secure sessions</span><span className="inline-flex items-center gap-1.5"><LockKeyhole className="h-3.5 w-3.5" />Private rooms</span><span className="inline-flex items-center gap-1.5"><Users className="h-3.5 w-3.5" />Public viewing</span></div>
+        </div>
+      </footer>
     </div>
-  )
+  );
+}
+
+function Speaker({ side, name, active = false }: { side: string; name: string; active?: boolean }) {
+  return (
+    <div className={`rounded-lg border p-3.5 ${active ? "border-[#425a8f] bg-[#172035]" : "border-[#282e38] bg-[#141820]"}`}>
+      <div className="flex items-center gap-3">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#242b36] text-xs font-semibold text-slate-200">{name.charAt(0)}</span>
+        <div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">{side}</p><p className="mt-0.5 truncate text-xs font-medium text-slate-200">{name}</p></div>
+      </div>
+    </div>
+  );
+}
+
+function Fact({ value, label }: { value: string; label: string }) {
+  return <div className="px-2 py-6 sm:px-8"><p className="text-sm font-semibold text-slate-200">{value}</p><p className="mt-1 text-xs text-slate-600">{label}</p></div>;
 }

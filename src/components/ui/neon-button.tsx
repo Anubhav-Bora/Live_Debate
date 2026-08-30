@@ -1,58 +1,33 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { motion } from "framer-motion"
-import { cn } from "@/lib/utils"
+import type React from "react";
+import { cn } from "@/lib/utils";
 
 interface NeonButtonProps {
-  children: React.ReactNode
-  className?: string
-  variant?: "primary" | "secondary" | "outline"
-  size?: "sm" | "md" | "lg"
-  onClick?: () => void
-  disabled?: boolean
-  type?: "button" | "submit"
+  children: React.ReactNode;
+  className?: string;
+  variant?: "primary" | "secondary" | "outline";
+  size?: "sm" | "md" | "lg";
+  onClick?: () => void;
+  disabled?: boolean;
+  type?: "button" | "submit";
 }
 
-export function NeonButton({
-  children,
-  className,
-  variant = "primary",
-  size = "md",
-  onClick,
-  disabled,
-  type = "button",
-}: NeonButtonProps) {
+export function NeonButton({ children, className, variant = "primary", size = "md", onClick, disabled, type = "button" }: NeonButtonProps) {
   const variants = {
-    primary:
-      "bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-lg shadow-indigo-500/25",
-    secondary:
-      "bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 text-white shadow-lg shadow-gray-500/25",
-    outline:
-      "border-2 border-indigo-500 text-indigo-400 hover:bg-indigo-500/10 hover:text-indigo-300 shadow-lg shadow-indigo-500/25",
-  }
-
+    primary: "border border-[#5d86ed] bg-[#4f73d9] text-white hover:border-[#7195ed] hover:bg-[#5a7ee0]",
+    secondary: "border border-[#303744] bg-[#1a2029] text-white hover:border-[#414b5c] hover:bg-[#202732]",
+    outline: "border border-[#303744] bg-transparent text-slate-200 hover:border-[#4a5568] hover:bg-white/[0.035] hover:text-white",
+  };
   const sizes = {
-    sm: "px-4 py-2 text-sm",
-    md: "px-6 py-3 text-base",
-    lg: "px-8 py-4 text-lg",
-  }
+    sm: "min-h-9 px-4 py-2 text-sm",
+    md: "min-h-11 px-5 py-2.5 text-sm",
+    lg: "min-h-12 px-6 py-3 text-base",
+  };
 
   return (
-    <motion.button
-      type={type}
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "relative rounded-lg font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed",
-        variants[variant],
-        sizes[size],
-        className,
-      )}
-    >
-      <span className="relative z-10">{children}</span>
-      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300" />
-    </motion.button>
-  )
+    <button type={type} onClick={onClick} disabled={disabled} className={cn("inline-flex items-center justify-center rounded-lg font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5d86ed]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0b0e13] disabled:cursor-not-allowed disabled:opacity-50", variants[variant], sizes[size], className)}>
+      {children}
+    </button>
+  );
 }

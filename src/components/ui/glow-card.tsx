@@ -1,40 +1,16 @@
-"use client"
-import type React from "react"
-import { motion } from "framer-motion"
-import { cn } from "@/lib/utils"
+import type React from "react";
+import { cn } from "@/lib/utils";
 
 interface GlowCardProps {
-  children: React.ReactNode
-  className?: string
-  glowColor?: string
+  children: React.ReactNode;
+  className?: string;
+  glowColor?: string;
 }
 
-export function GlowCard({ children, className, glowColor }: GlowCardProps) {
-  const getDefaultGlowColor = () => {
-    if (typeof window !== "undefined") {
-      const isDark =
-        document.documentElement.classList.contains("dark") ||
-        (!document.documentElement.classList.contains("light") &&
-          window.matchMedia("(prefers-color-scheme: dark)").matches)
-      return isDark ? "rgba(99, 102, 241, 0.3)" : "rgba(99, 102, 241, 0.2)"
-    }
-    return "rgba(99, 102, 241, 0.3)"
-  }
-
-  const finalGlowColor = glowColor || getDefaultGlowColor()
-
+export function GlowCard({ children, className }: GlowCardProps) {
   return (
-    <motion.div
-      className={cn(
-        "relative glass rounded-xl p-6 transition-all duration-300 theme-transition",
-        className,
-      )}
-      style={{
-        boxShadow: `0 0 20px ${finalGlowColor}`,
-      }}
-    >
-      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 transition-opacity duration-300 dark:via-white/5 light:via-black/5" />
-      <div className="relative z-10">{children}</div>
-    </motion.div>
-  )
+    <div className={cn("relative overflow-hidden rounded-xl border border-[#282e38] bg-[#12161d] p-6 shadow-[0_16px_44px_-34px_rgba(0,0,0,.95)]", className)}>
+      {children}
+    </div>
+  );
 }

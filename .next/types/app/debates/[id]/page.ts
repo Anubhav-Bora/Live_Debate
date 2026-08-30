@@ -1,4 +1,4 @@
-// File: D:\webDev Projects\live-ai-debate-arena\src\app\debates\[id]\page.tsx
+// File: E:\Live_Debate\src\app\debates\[id]\page.tsx
 import * as entry from '../../../../../src/app/debates/[id]/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

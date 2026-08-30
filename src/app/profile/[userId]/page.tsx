@@ -1,406 +1,162 @@
-"use client"
+"use client";
 
-import { useUser } from "@clerk/nextjs"
-import { useParams } from "next/navigation"
-import { useEffect, useState } from "react"
-import { CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { motion } from "framer-motion"
-import { Skeleton } from "@/components/ui/skeleton"
-import Link from "next/link"
-import { AnimatedBackground } from "@/components/ui/animated-background"
-import { GlowCard } from "@/components/ui/glow-card"
-import { NeonButton } from "@/components/ui/neon-button"
-import {
-  User,
-  Trophy,
-  MessageSquare,
-  Award,
-  TrendingUp,
-  Calendar,
-  Edit,
-  ArrowLeft,
-  Target,
-  Zap,
-  Brain,
-  Star,
-} from "lucide-react"
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { ArrowLeft, ArrowUpRight, Award, CalendarDays, ChartNoAxesColumnIncreasing, MessageSquareText, Scale, Target, Trophy, UserRound } from "lucide-react";
+import { AnimatedBackground } from "@/components/ui/animated-background";
 
 interface UserProfile {
-  id: string
-  username: string
-  email: string
-  createdAt: string
+  id: string;
+  username: string;
+  createdAt: string;
   scores: Array<{
-    logic: number
-    clarity: number
-    persuasiveness: number
-    tone: number
-    debate: { topic: string; id: string }
-  }>
+    logic: number;
+    clarity: number;
+    persuasiveness: number;
+    tone: number;
+    createdAt: string;
+    debate: { topic: string; id: string; winner?: string | null };
+  }>;
   badges: Array<{
-    id: string
-    name: string
-    description: string
-    icon: string
-    earnedAt: string
-  }>
-  totalScore: number
-  debateCount: number
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    earnedAt: string;
+  }>;
+  totalScore: number;
+  debateCount: number;
 }
 
 export default function ProfilePage() {
-  const { userId } = useParams()
-  const { user: currentUser } = useUser()
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { userId } = useParams<{ userId: string }>();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    let cancelled = false;
+    const load = async () => {
       try {
-        setLoading(true)
-        const res = await fetch(`/api/users/${userId}`)
-        if (res.ok) {
-          const data = await res.json()
-          setProfile(data)
-        }
+        const response = await fetch(`/api/users/${userId}`, { cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json() as UserProfile;
+        if (!cancelled) setProfile(data);
       } catch (error) {
-        console.error("Error fetching profile:", error)
+        console.error("Could not load profile:", error);
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false);
       }
-    }
+    };
+    void load();
+    return () => { cancelled = true; };
+  }, [userId]);
 
-    fetchProfile()
-  }, [userId])
+  const averages = useMemo(() => {
+    if (!profile?.scores.length) return [];
+    const keys = ["logic", "clarity", "persuasiveness", "tone"] as const;
+    return keys.map((key) => ({
+      key,
+      label: key === "persuasiveness" ? "Persuasion" : key.charAt(0).toUpperCase() + key.slice(1),
+      value: profile.scores.reduce((sum, score) => sum + score[key], 0) / profile.scores.length,
+    }));
+  }, [profile]);
 
-  const getScoreColor = (score: number) => {
-    if (score >= 8) return "from-green-500 to-emerald-500"
-    if (score >= 6) return "from-yellow-500 to-orange-500"
-    return "from-red-500 to-pink-500"
-  }
-
-  const getScoreGlow = (score: number) => {
-    if (score >= 8) return "rgba(34, 197, 94, 0.3)"
-    if (score >= 6) return "rgba(245, 158, 11, 0.3)"
-    return "rgba(239, 68, 68, 0.3)"
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen relative overflow-hidden">
-        <AnimatedBackground />
-        <div className="relative z-10 container mx-auto px-4 py-8">
-          <div className="flex items-center space-x-6 mb-8">
-            <Skeleton className="w-24 h-24 rounded-full bg-white/10" />
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-48 bg-white/10" />
-              <Skeleton className="h-4 w-64 bg-white/10" />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-32 bg-white/10" />
-            ))}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Skeleton className="h-64 bg-white/10" />
-            <Skeleton className="h-64 bg-white/10" />
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!profile) {
-    return (
-      <div className="min-h-screen relative overflow-hidden">
-        <AnimatedBackground />
-        <div className="relative z-10 container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
-          <GlowCard className="text-center">
-            <User className="w-16 h-16 mx-auto mb-4 text-indigo-400 opacity-50" />
-            <h2 className="text-2xl font-bold text-white mb-4">Profile Not Found</h2>
-            <p className="text-gray-300 mb-6">The user profile you&apos;re looking for doesn&apos;t exist.</p>
-            <Link href="/leaderboard">
-              <NeonButton variant="outline">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Leaderboard
-              </NeonButton>
-            </Link>
-          </GlowCard>
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <ProfileSkeleton />;
+  if (!profile) return <MissingProfile />;
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden">
       <AnimatedBackground />
-      
-      <div className="relative z-10 container mx-auto px-4 py-8">
-        {/* Profile Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <GlowCard className="relative overflow-hidden">
-            {/* Background Pattern */}
-            <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-pink-500/10" />
-            <div className="absolute inset-0 opacity-20" style={{
-              backgroundImage: `radial-gradient(circle at 1px 1px, rgba(156, 146, 172, 0.15) 1px, transparent 0)`,
-              backgroundSize: '20px 20px'
-            }} />
-            
-            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-6 p-8">
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: "spring" }}
-                className="relative"
-              >
-                <div className="w-24 h-24 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center text-white text-3xl font-bold animate-pulse-glow">
-                  {profile.username.charAt(0).toUpperCase()}
-                </div>
-                <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center">
-                  <Star className="w-4 h-4 text-white" />
-                </div>
-              </motion.div>
-              
-              <div className="flex-1">
-                <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
-                  {profile.username}
-                </h1>
-                <div className="flex items-center gap-2 text-gray-300 mb-4">
-                  <Calendar className="w-4 h-4" />
-                  <span>Member since {new Date(profile.createdAt).toLocaleDateString("en-US", {
-                    year: "numeric",
-                    month: "long"
-                  })}</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/30">
-                    Debate Champion
-                  </Badge>
-                  <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30">
-                    AI Analyzed
-                  </Badge>
-                </div>
+      <div className="relative z-10 mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+        <Link href="/leaderboard" className="inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-white"><ArrowLeft className="h-4 w-4" />Back to rankings</Link>
+
+        <header className="mt-7 flex flex-col gap-6 border-b border-[#282e38] pb-8 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-5">
+            <span className="grid h-16 w-16 shrink-0 place-items-center rounded-lg border border-[#3a465d] bg-[#172035] text-2xl font-semibold uppercase text-[#b5c6f2]">{profile.username.charAt(0)}</span>
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="font-editorial text-4xl tracking-[-0.035em] text-[#f4f3ef]">{profile.username}</h1>
+                <span className="rounded-md border border-[#303744] bg-[#171c24] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">{profile.debateCount ? "Ranked" : "New member"}</span>
               </div>
-              
-              {currentUser?.id === userId && (
-                <NeonButton variant="outline">
-                  <Edit className="w-4 h-4 mr-2" />
-                  Edit Profile
-                </NeonButton>
-              )}
+              <p className="mt-2 flex items-center gap-2 text-sm text-slate-500"><CalendarDays className="h-4 w-4" />Member since {new Date(profile.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</p>
             </div>
-          </GlowCard>
-        </motion.div>
+          </div>
+          <Link href="/debates" className="inline-flex h-10 items-center justify-center gap-2 self-start rounded-lg border border-[#303744] bg-[#171c24] px-4 text-sm font-semibold text-slate-200 transition hover:border-[#465064] hover:bg-[#1d232d] sm:self-auto">View debates <ArrowUpRight className="h-4 w-4" /></Link>
+        </header>
 
-        {/* Stats Cards */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"
-        >
-          <GlowCard glowColor="rgba(99, 102, 241, 0.3)">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Overall Score</h3>
-              <Trophy className="w-6 h-6 text-indigo-400" />
+        <section className="mt-8 grid gap-3 sm:grid-cols-3">
+          <Stat icon={Trophy} label="Average score" value={profile.debateCount ? profile.totalScore.toFixed(1) : "—"} suffix={profile.debateCount ? "/ 10" : undefined} />
+          <Stat icon={MessageSquareText} label="Judged debates" value={profile.debateCount.toString()} />
+          <Stat icon={Award} label="Achievements" value={profile.badges.length.toString()} />
+        </section>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-[.9fr_1.1fr]">
+          <section className="surface-card p-6">
+            <div className="flex items-center gap-3 border-b border-[#282e38] pb-5">
+              <ChartNoAxesColumnIncreasing className="h-5 w-5 text-[#829ee3]" />
+              <div><h2 className="font-semibold text-white">Category performance</h2><p className="mt-1 text-xs text-slate-600">Average across judged debates</p></div>
             </div>
-            <motion.p
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.4 }}
-              className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400"
-            >
-              {profile.totalScore.toFixed(1)}
-            </motion.p>
-            <p className="text-gray-400 text-sm mt-2">Performance Rating</p>
-          </GlowCard>
+            {averages.length ? (
+              <div className="mt-6 space-y-6">
+                {averages.map((metric) => (
+                  <div key={metric.key}>
+                    <div className="mb-2 flex items-center justify-between text-sm"><span className="text-slate-400">{metric.label}</span><span className="font-semibold text-slate-200">{metric.value.toFixed(1)}</span></div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-[#242a33]"><div className="h-full rounded-full bg-[#6385d8]" style={{ width: `${Math.max(0, Math.min(100, metric.value * 10))}%` }} /></div>
+                  </div>
+                ))}
+              </div>
+            ) : <EmptyBlock icon={Target} title="No score history" copy="Complete a debate to build a category performance record." />}
+          </section>
 
-          <GlowCard glowColor="rgba(34, 197, 94, 0.3)">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Debates</h3>
-              <MessageSquare className="w-6 h-6 text-green-400" />
+          <section className="surface-card overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[#282e38] px-6 py-5">
+              <div><h2 className="font-semibold text-white">Recent debates</h2><p className="mt-1 text-xs text-slate-600">Latest judged results</p></div>
+              <Scale className="h-5 w-5 text-slate-600" />
             </div>
-            <motion.p
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.5 }}
-              className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-400"
-            >
-              {profile.debateCount}
-            </motion.p>
-            <p className="text-gray-400 text-sm mt-2">Total Participated</p>
-          </GlowCard>
-
-          <GlowCard glowColor="rgba(245, 158, 11, 0.3)">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Achievements</h3>
-              <Award className="w-6 h-6 text-yellow-400" />
-            </div>
-            <motion.p
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.6 }}
-              className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-400"
-            >
-              {profile.badges.length}
-            </motion.p>
-            <p className="text-gray-400 text-sm mt-2">Badges Earned</p>
-          </GlowCard>
-        </motion.div>
-
-        {/* Performance & Badges */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Recent Performance */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.7 }}
-          >
-            <GlowCard>
-              <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-indigo-400" />
-                  Recent Performance
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {profile.scores.length > 0 ? (
-                  <div className="space-y-4">
-                    {profile.scores.slice(0, 5).map((score, index) => (
-                      <motion.div
-                        key={index}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.8 + index * 0.1 }}
-                        className="border-b border-white/10 pb-4 last:border-b-0 last:pb-0"
-                      >
-                        <Link
-                          href={`/debates/${score.debate.id}`}
-                          className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors line-clamp-2 mb-3 block"
-                        >
-                          {score.debate.topic}
-                        </Link>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-400 text-sm flex items-center gap-1">
-                                <Brain className="w-3 h-3" />
-                                Logic
-                              </span>
-                              <Badge 
-                                className={`bg-gradient-to-r ${getScoreColor(score.logic)} text-white px-2 py-0.5 text-xs`}
-                                style={{ boxShadow: `0 0 10px ${getScoreGlow(score.logic)}` }}
-                              >
-                                {score.logic.toFixed(1)}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-400 text-sm flex items-center gap-1">
-                                <Target className="w-3 h-3" />
-                                Clarity
-                              </span>
-                              <Badge 
-                                className={`bg-gradient-to-r ${getScoreColor(score.clarity)} text-white px-2 py-0.5 text-xs`}
-                                style={{ boxShadow: `0 0 10px ${getScoreGlow(score.clarity)}` }}
-                              >
-                                {score.clarity.toFixed(1)}
-                              </Badge>
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-400 text-sm flex items-center gap-1">
-                                <Zap className="w-3 h-3" />
-                                Persuasion
-                              </span>
-                              <Badge 
-                                className={`bg-gradient-to-r ${getScoreColor(score.persuasiveness)} text-white px-2 py-0.5 text-xs`}
-                                style={{ boxShadow: `0 0 10px ${getScoreGlow(score.persuasiveness)}` }}
-                              >
-                                {score.persuasiveness.toFixed(1)}
-                              </Badge>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-400 text-sm flex items-center gap-1">
-                                <Star className="w-3 h-3" />
-                                Tone
-                              </span>
-                              <Badge 
-                                className={`bg-gradient-to-r ${getScoreColor(score.tone)} text-white px-2 py-0.5 text-xs`}
-                                style={{ boxShadow: `0 0 10px ${getScoreGlow(score.tone)}` }}
-                              >
-                                {score.tone.toFixed(1)}
-                              </Badge>
-                            </div>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <MessageSquare className="w-12 h-12 mx-auto mb-4 text-indigo-400 opacity-50" />
-                    <p className="text-gray-400">No debate history yet</p>
-                  </div>
-                )}
-              </CardContent>
-            </GlowCard>
-          </motion.div>
-
-          {/* Badges */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.7 }}
-          >
-            <GlowCard>
-              <CardHeader>
-                <CardTitle className="text-white flex items-center gap-2">
-                  <Award className="w-5 h-5 text-yellow-400" />
-                  Achievement Gallery
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {profile.badges.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    {profile.badges.map((badge, index) => (
-                      <motion.div
-                        key={badge.id}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.8 + index * 0.1 }}
-                        whileHover={{ scale: 1.05 }}
-                        className="text-center p-4 rounded-lg bg-gradient-to-b from-white/5 to-white/10 border border-white/10 hover:border-yellow-500/30 transition-all"
-                      >
-                        <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gradient-to-r from-yellow-400 to-orange-500 flex items-center justify-center text-2xl animate-pulse-glow">
-                          {badge.icon || "🏆"}
-                        </div>
-                        <h3 className="font-semibold text-white text-sm mb-1">{badge.name}</h3>
-                        <p className="text-xs text-gray-400 mb-2 line-clamp-2">{badge.description}</p>
-                        <p className="text-xs text-gray-500">
-                          {new Date(badge.earnedAt).toLocaleDateString()}
-                        </p>
-                      </motion.div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <Award className="w-12 h-12 mx-auto mb-4 text-yellow-400 opacity-50" />
-                    <p className="text-gray-400">No achievements yet</p>
-                    <p className="text-gray-500 text-sm mt-2">Participate in debates to earn badges!</p>
-                  </div>
-                )}
-              </CardContent>
-            </GlowCard>
-          </motion.div>
+            {profile.scores.length ? (
+              <div className="divide-y divide-[#242a33]">
+                {profile.scores.map((score) => {
+                  const average = (score.logic + score.clarity + score.persuasiveness + score.tone) / 4;
+                  return (
+                    <Link key={score.debate.id} href={`/debates/${score.debate.id}`} className="grid grid-cols-[1fr_auto] gap-5 px-6 py-5 transition hover:bg-white/[0.025]">
+                      <div className="min-w-0"><p className="truncate text-sm font-medium text-slate-200">{score.debate.topic}</p><p className="mt-1.5 text-xs text-slate-600">{new Date(score.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>
+                      <div className="text-right"><p className="text-lg font-semibold text-white">{average.toFixed(1)}</p><p className="text-[10px] text-slate-600">overall</p></div>
+                    </Link>
+                  );
+                })}
+              </div>
+            ) : <div className="p-6"><EmptyBlock icon={MessageSquareText} title="No completed debates" copy="Completed sessions will appear here with their result." /></div>}
+          </section>
         </div>
+
+        <section className="surface-card mt-6 p-6">
+          <div className="flex items-center gap-3"><Award className="h-5 w-5 text-[#829ee3]" /><div><h2 className="font-semibold text-white">Achievements</h2><p className="mt-1 text-xs text-slate-600">Milestones earned through debate activity</p></div></div>
+          {profile.badges.length ? (
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {profile.badges.map((badge) => (
+                <div key={badge.id} className="rounded-lg border border-[#303744] bg-[#0f1319] p-4"><div className="flex items-start gap-3"><span className="text-xl" aria-hidden="true">{badge.icon}</span><div><p className="text-sm font-semibold text-slate-200">{badge.name}</p><p className="mt-1 text-xs leading-5 text-slate-600">{badge.description}</p></div></div></div>
+              ))}
+            </div>
+          ) : <EmptyBlock icon={Award} title="No achievements yet" copy="Milestones appear here as the debate record grows." />}
+        </section>
       </div>
     </div>
-  )
+  );
+}
+
+function Stat({ icon: Icon, label, value, suffix }: { icon: typeof Trophy; label: string; value: string; suffix?: string }) {
+  return <div className="surface-card flex items-center gap-4 px-5 py-4"><span className="grid h-10 w-10 place-items-center rounded-lg border border-[#303744] bg-[#171c24]"><Icon className="h-4 w-4 text-[#829ee3]" /></span><div><p className="text-xl font-semibold text-white">{value}<span className="ml-1 text-xs font-normal text-slate-600">{suffix}</span></p><p className="text-xs text-slate-500">{label}</p></div></div>;
+}
+
+function EmptyBlock({ icon: Icon, title, copy }: { icon: typeof Target; title: string; copy: string }) {
+  return <div className="flex min-h-40 flex-col items-center justify-center px-5 text-center"><Icon className="h-6 w-6 text-slate-700" /><p className="mt-3 text-sm font-medium text-slate-300">{title}</p><p className="mt-1 max-w-xs text-xs leading-5 text-slate-600">{copy}</p></div>;
+}
+
+function ProfileSkeleton() {
+  return <div className="relative min-h-screen"><AnimatedBackground /><div className="relative z-10 mx-auto max-w-6xl animate-pulse px-4 py-14 sm:px-6"><div className="h-4 w-32 rounded bg-[#202630]" /><div className="mt-8 h-20 rounded-lg bg-[#151a21]" /><div className="mt-8 grid gap-3 sm:grid-cols-3">{Array.from({ length: 3 }, (_, index) => <div key={index} className="h-20 rounded-xl bg-[#151a21]" />)}</div><div className="mt-6 grid gap-6 lg:grid-cols-2"><div className="h-96 rounded-xl bg-[#151a21]" /><div className="h-96 rounded-xl bg-[#151a21]" /></div></div></div>;
+}
+
+function MissingProfile() {
+  return <div className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center px-4"><AnimatedBackground /><div className="surface-card relative z-10 max-w-md p-8 text-center"><UserRound className="mx-auto h-8 w-8 text-slate-600" /><h1 className="font-editorial mt-5 text-3xl text-[#f4f3ef]">Profile unavailable</h1><p className="mt-3 text-sm leading-6 text-slate-500">This account may have been removed or the link is incorrect.</p><Link href="/leaderboard" className="mt-6 inline-flex h-10 items-center gap-2 rounded-lg border border-[#303744] bg-[#171c24] px-4 text-sm font-semibold text-slate-200"><ArrowLeft className="h-4 w-4" />Back to rankings</Link></div></div>;
 }

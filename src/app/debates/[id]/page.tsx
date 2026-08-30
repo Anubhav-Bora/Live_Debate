@@ -1,998 +1,537 @@
-"use client"
-import { useUser } from "@clerk/nextjs"
-import { useParams, useRouter } from "next/navigation"
-import { useState, useEffect, useRef } from "react"
-import { CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import { toast } from "sonner"
-import Link from "next/link"
-import VideoDebateRoom from "@/components/VideoDebateRoom"
-import { useSocket } from "@/context/SocketContext"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { motion } from "framer-motion"
-import { AnimatedBackground } from "@/components/ui/animated-background"
-import { GlowCard } from "@/components/ui/glow-card"
-import { NeonButton } from "@/components/ui/neon-button"
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/context/AuthContext";
+import { useParams, useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { toast } from "sonner";
 import {
   ArrowLeft,
-  Users,
-  Clock,
-  MessageSquare,
   Brain,
-  Zap,
+  CheckCircle2,
+  Clock3,
+  Copy,
+  Crown,
+  Loader2,
+  LockKeyhole,
+  MessageSquare,
   Play,
-  Pause,
-  Trophy,
+  Radio,
+  Send,
+  ShieldCheck,
   Target,
-  Lightbulb,
-  TrendingUp,
   Trash2,
+  Trophy,
+  UserRound,
+  Users,
   X,
-} from "lucide-react"
+} from "lucide-react";
+import { AnimatedBackground } from "@/components/ui/animated-background";
+import { GlowCard } from "@/components/ui/glow-card";
+import { NeonButton } from "@/components/ui/neon-button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import VideoDebateRoom from "@/components/VideoDebateRoom";
+import { useSocket } from "@/context/SocketContext";
+
+type DebateStatus = "waiting" | "in-progress" | "completed";
+type Role = "pro" | "con" | "viewer";
+
+interface DebateUser {
+  id: string;
+  username: string;
+}
+
+interface ParticipantResult {
+  joined?: boolean;
+  score?: number | null;
+  logic?: number;
+  clarity?: number;
+  persuasiveness?: number;
+  tone?: number;
+  mistakes?: string[];
+  improvements?: string[];
+  feedback?: string;
+}
+
+interface DebateFeedback {
+  status?: "completed" | "failed" | "insufficient";
+  winner?: "pro" | "con" | "tie" | null;
+  summary?: string;
+  message?: string;
+  confidence?: number;
+  pro?: ParticipantResult;
+  con?: ParticipantResult;
+}
 
 interface Debate {
   id: string;
   topic: string;
-  status: string;
+  status: DebateStatus;
+  analysisStatus: string;
   duration: number;
-  joinCodeCon: string;
-  proDisplayName?: string;
-  proUser?: {
-    clerkId: string;
-    username: string;
-    id: string;
-  };
-  conUser?: {
-    clerkId: string;
-    username: string;
-    id: string;
-  };
+  startTime?: string | null;
+  endTime?: string | null;
+  isPublic: boolean;
+  joinCodeCon?: string;
+  proDisplayName?: string | null;
+  proUser: DebateUser;
+  conUser?: DebateUser | null;
+  aiFeedback?: DebateFeedback | null;
+  winner?: "pro" | "con" | "tie" | null;
+  viewerRole: Role;
+  canDelete: boolean;
 }
 
-interface Message {
+interface DebateMessage {
   id: string;
   content: string;
   role: string;
-  sender?: {
-    username: string;
-  };
-}
-
-interface AIFeedback {
-  error?: string;
-  message?: string;
-  pro?: {
-    joined: boolean;
-    score?: string;
-    mistakes?: string[];
-    improvements?: string[];
-    feedback?: string;
-  };
-  con?: {
-    joined: boolean;
-    score?: string;
-    mistakes?: string[];
-    improvements?: string[];
-    feedback?: string;
-  };
+  createdAt: string;
+  sender: { id: string; username: string };
 }
 
 export default function DebatePage() {
-  const params = useParams()
-  const id = params?.id as string
-  const { user } = useUser()
-  const router = useRouter()
-  const [debate, setDebate] = useState<Debate | null>(null)
-  const [role, setRole] = useState<"pro" | "con" | "viewer">("viewer")
-  const [joinCode, setJoinCode] = useState("")
-  const [loading, setLoading] = useState(true)
-  const { socket, isConnected } = useSocket()
-  const [debateStatus, setDebateStatus] = useState<string>("waiting")
-  const [timer, setTimer] = useState<number | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
-  const [newMessage, setNewMessage] = useState("")
-  const [isSending, setIsSending] = useState(false)
-  const [aiFeedback, setAiFeedback] = useState<AIFeedback | null>(null)
-  const [timeLeft, setTimeLeft] = useState<number | null>(null)
-  const [feedbackLoading, setFeedbackLoading] = useState(false)
-  const [feedbackError, setFeedbackError] = useState<string | null>(null)
-  const [messagesLoading, setMessagesLoading] = useState(true)
-  const timerInterval = useRef<NodeJS.Timeout | null>(null)
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const { user, isLoaded: userLoaded } = useAuth();
+  const { socket, isConnected } = useSocket();
+  const [debate, setDebate] = useState<Debate | null>(null);
+  const [role, setRole] = useState<Role>("viewer");
+  const [messages, setMessages] = useState<DebateMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [joinCode, setJoinCode] = useState("");
+  const [joining, setJoining] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [newMessage, setNewMessage] = useState("");
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [feedback, setFeedback] = useState<DebateFeedback | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState("idle");
+  const [retrying, setRetrying] = useState(false);
+  const [presence, setPresence] = useState({ proReady: false, conReady: false });
+
+  const loadDebate = useCallback(async () => {
+    const response = await fetch(`/api/debates/${id}`, { cache: "no-store" });
+    if (!response.ok) throw new Error(response.status === 404 ? "Debate not found" : "Could not load debate");
+    const data = (await response.json()) as Debate;
+    setDebate(data);
+    setFeedback(data.aiFeedback || null);
+    setAnalysisStatus(data.analysisStatus || "idle");
+    setRole(data.viewerRole);
+    return data;
+  }, [id]);
+
+  const loadMessages = useCallback(async () => {
+    const response = await fetch(`/api/debates/${id}/messages`, { cache: "no-store" });
+    if (response.ok) setMessages(await response.json());
+  }, [id]);
 
   useEffect(() => {
-    if (!id) return
-    const fetchDebate = async () => {
-      try {
-        const res = await fetch(`/api/debates/${id}`)
-        if (res.ok) {
-          const data = await res.json()
-          setDebate(data)
-          setDebateStatus(data.status || "waiting")
-
-          if (data.status === "completed" && data.aiFeedback) {
-            setAiFeedback(data.aiFeedback)
-            console.log("✅ Loaded existing AI feedback:", data.aiFeedback)
-          }
-
-          if (user?.id) {
-            if (data.proUser?.clerkId === user.id) {
-              setRole("pro")
-            } else if (data.conUser?.clerkId === user.id) {
-              setRole("con")
-            }
-          }
-        } else {
-          setDebate(null)
-          toast.error(`Failed to fetch debate: ${res.status}`)
-        }
-      } catch {
-        setDebate(null)
-        toast.error("Error fetching debate")
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchDebate()
-  }, [id, user?.id])
+    if (!id || !userLoaded) return;
+    Promise.all([loadDebate(), loadMessages()])
+      .catch((error) => toast.error(error instanceof Error ? error.message : "Could not load debate"))
+      .finally(() => setLoading(false));
+  }, [id, loadDebate, loadMessages, userLoaded]);
 
   useEffect(() => {
-    if (!socket || !id || !user?.id) return
-    socket.emit("join_debate", { debateId: id, userId: user.id, role })
-    console.log(`🔌 Joined debate room: debate_${id} as ${role}`)
-
-    const onStarted = ({ duration }: { duration: number }) => {
-      console.log("✅ Debate started:", { duration })
-      setDebateStatus("in-progress")
-      setTimer(duration)
-    }
-
+    if (!socket || !id || !userLoaded) return;
+    const joinRoom = () => socket.emit("join_debate", { debateId: id });
+    const onState = (state: {
+      status: DebateStatus;
+      startTime?: string;
+      duration: number;
+      role: Role;
+      analysisStatus?: string;
+      aiFeedback?: DebateFeedback;
+    }) => {
+      setRole(state.role);
+      setAnalysisStatus(state.analysisStatus || "idle");
+      if (state.aiFeedback) setFeedback(state.aiFeedback);
+      setDebate((current) => current ? {
+        ...current,
+        status: state.status,
+        startTime: state.startTime || current.startTime,
+        duration: state.duration,
+      } : current);
+    };
+    const onStarted = ({ startTime, duration }: { startTime: string; duration: number }) => {
+      setStarting(false);
+      setFeedback(null);
+      setAnalysisStatus("idle");
+      setDebate((current) => current ? { ...current, status: "in-progress", startTime, duration } : current);
+      toast.success("Debate is live. Transcription has started.");
+    };
     const onEnded = () => {
-      console.log("✅ Debate ended - waiting for AI feedback...")
-      setDebateStatus("completed")
-      setTimer(0)
-      setFeedbackLoading(true)
-      setFeedbackError(null)
-    }
+      setDebate((current) => current ? { ...current, status: "completed" } : current);
+      setAnalysisStatus("analyzing");
+      setTimeLeft(0);
+    };
+    const onFeedback = (result: DebateFeedback) => {
+      setFeedback(result);
+      setAnalysisStatus(result.status === "failed" ? "failed" : "completed");
+      setDebate((current) => current ? { ...current, winner: result.winner, aiFeedback: result } : current);
+    };
+    const onMessage = (message: DebateMessage) => {
+      setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
+    };
+    const onPresence = (next: { proReady: boolean; conReady: boolean }) => setPresence(next);
+    const onAppError = ({ message }: { message?: string }) => {
+      setStarting(false);
+      if (message) toast.error(message);
+    };
 
-    const onFeedback = (feedback: AIFeedback) => {
-      console.log("✅ AI Feedback received:", feedback)
-      setFeedbackLoading(false)
-
-      if (feedback && (feedback.pro || feedback.con)) {
-        setAiFeedback(feedback)
-        setFeedbackError(null)
-        console.log("✅ Feedback set successfully")
-      } else if (feedback && feedback.message) {
-        setAiFeedback(feedback)
-        setFeedbackError(null)
-        console.log("✅ Message feedback set")
-      } else if (feedback && feedback.error) {
-        console.error("❌ Feedback error:", feedback.error)
-        setFeedbackError(`AI Analysis Error: ${feedback.error}`)
-        setAiFeedback(null)
-      } else {
-        console.error("❌ Invalid feedback format:", feedback)
-        setFeedbackError("Invalid feedback received. Please refresh to try again.")
-        setAiFeedback(null)
-      }
-    }
-
-    const onError = (error: unknown) => {
-      console.error("❌ Socket error:", error)
-      setFeedbackLoading(false)
-      setFeedbackError("Connection error while loading feedback. Please refresh the page.")
-    }
-
-    socket.on("debate_started", onStarted)
-    socket.on("debate_ended", onEnded)
-    socket.on("debate_feedback", onFeedback)
-    socket.on("connect_error", onError)
-    socket.on("error", onError)
-
+    socket.on("connect", joinRoom);
+    socket.on("debate_state", onState);
+    socket.on("debate_started", onStarted);
+    socket.on("debate_ended", onEnded);
+    socket.on("debate_feedback", onFeedback);
+    socket.on("new_message", onMessage);
+    socket.on("presence_update", onPresence);
+    socket.on("app_error", onAppError);
+    if (isConnected) joinRoom();
     return () => {
-      socket.off("debate_started", onStarted)
-      socket.off("debate_ended", onEnded)
-      socket.off("debate_feedback", onFeedback)
-      socket.off("connect_error", onError)
-      socket.off("error", onError)
-    }
-  }, [socket, id, user?.id, role])
+      socket.off("connect", joinRoom);
+      socket.off("debate_state", onState);
+      socket.off("debate_started", onStarted);
+      socket.off("debate_ended", onEnded);
+      socket.off("debate_feedback", onFeedback);
+      socket.off("new_message", onMessage);
+      socket.off("presence_update", onPresence);
+      socket.off("app_error", onAppError);
+    };
+  }, [id, isConnected, socket, userLoaded]);
 
   useEffect(() => {
-    if (debateStatus === "completed" && feedbackLoading && !aiFeedback) {
-      const fallbackTimer = setTimeout(async () => {
-        try {
-          console.log("⏰ Socket timeout - trying API fallback for feedback...")
-          const res = await fetch(`/api/debates/${id}`)
-          if (res.ok) {
-            const debateData = await res.json()
-            if (debateData.aiFeedback) {
-              console.log("✅ Fallback feedback received:", debateData.aiFeedback)
-              setAiFeedback(debateData.aiFeedback)
-              setFeedbackLoading(false)
-              setFeedbackError(null)
-            } else {
-              console.log("⏰ No feedback yet, will retry...")
-              setFeedbackError("AI feedback is still being generated. Please wait...")
-              setTimeout(() => {
-                setFeedbackLoading(true)
-                setFeedbackError(null)
-              }, 5000)
-            }
-          }
-        } catch (error) {
-          console.error("❌ Fallback fetch failed:", error)
-          setFeedbackError("Failed to load AI feedback. Please refresh the page.")
-          setFeedbackLoading(false)
-        }
-      }, 15000)
-      return () => clearTimeout(fallbackTimer)
+    if (debate?.status !== "in-progress" || !debate.startTime) {
+      setTimeLeft(debate?.status === "waiting" ? debate.duration : 0);
+      return;
     }
-  }, [debateStatus, feedbackLoading, aiFeedback, id])
+    const updateTimer = () => {
+      const endsAt = new Date(debate.startTime as string).getTime() + debate.duration * 1_000;
+      setTimeLeft(Math.max(0, Math.ceil((endsAt - Date.now()) / 1_000)));
+    };
+    updateTimer();
+    const timer = setInterval(updateTimer, 1_000);
+    return () => clearInterval(timer);
+  }, [debate?.duration, debate?.startTime, debate?.status]);
 
   useEffect(() => {
-    if (!id) return
-    const fetchMessages = async () => {
-      setMessagesLoading(true)
-      try {
-        const res = await fetch(`/api/debates/${id}/messages`)
-        if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`)
-        const data = await res.json()
-        setMessages(data)
-      } catch {
-        console.log("Error fetching messages")
-      } finally {
-        setMessagesLoading(false)
-      }
-    }
-    fetchMessages()
-    const interval = setInterval(fetchMessages, 5000)
-    return () => clearInterval(interval)
-  }, [id])
+    if (debate?.status !== "completed" || analysisStatus !== "analyzing") return;
+    const poll = setInterval(() => {
+      loadDebate().catch(() => undefined);
+    }, 4_000);
+    return () => clearInterval(poll);
+  }, [analysisStatus, debate?.status, loadDebate]);
 
-  useEffect(() => {
-    if (debateStatus !== "in-progress" || !timer) return
-    setTimeLeft(timer)
-    if (timerInterval.current) clearInterval(timerInterval.current)
-    timerInterval.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev === null) return null
-        if (prev <= 1) {
-          setDebateStatus("completed")
-          clearInterval(timerInterval.current as NodeJS.Timeout)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
-    return () => {
-      if (timerInterval.current) clearInterval(timerInterval.current)
-    }
-  }, [debateStatus, timer])
+  const canStart = role === "pro" && presence.proReady && presence.conReady && debate?.status === "waiting";
+  const formattedTime = useMemo(() => {
+    const minutes = Math.floor(timeLeft / 60);
+    return `${minutes}:${String(timeLeft % 60).padStart(2, "0")}`;
+  }, [timeLeft]);
 
-  const [joinLoading, setJoinLoading] = useState(false)
-  const handleJoin = async (action: "join_con") => {
-    if (!user?.id || !id) return
-    setJoinLoading(true)
+  const joinAsCon = async () => {
+    if (!joinCode.trim()) return;
+    setJoining(true);
     try {
-      const res = await fetch(`/api/debates/${id}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: user.id,
-          action,
-          joinCode,
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setDebate(data)
-        setRole("con")
-        toast.success("Joined as Con")
-      } else {
-        let errorMsg = "Failed to join"
-        try {
-          const errorData = await res.json()
-          errorMsg = errorData.error || errorMsg
-        } catch {
-          console.error("Error parsing error response")
-        }
-        toast.error(errorMsg)
-      }
-    } catch {
-      toast.error("An error occurred while joining")
-    } finally {
-      setJoinLoading(false)
-    }
-  }
-
-  const [startLoading, setStartLoading] = useState(false)
-  const handleStartDebate = () => {
-    if (!socket || !isConnected) {
-      toast.error("Socket not connected. Please refresh the page.")
-      return
-    }
-    setStartLoading(true)
-    socket.emit("start_debate", { debateId: id })
-  }
-
-  const handleRemoveParticipant = async () => {
-    if (!user?.id || !id || !debate) return
-    if (debate.proUser?.clerkId !== user.id) {
-      toast.error("Only the debate creator can remove participants")
-      return
-    }
-    if (!confirm("Are you sure you want to remove the Con participant?")) {
-      return
-    }
-    try {
-      const res = await fetch(`/api/debates/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, action: "remove_con" })
-      })
-      if (res.ok) {
-        const updatedDebate = await res.json()
-        setDebate(updatedDebate)
-        toast.success("Con participant removed")
-      } else {
-        const errorData = await res.json()
-        toast.error(errorData.error || "Failed to remove participant")
-      }
-    } catch {
-      toast.error("An error occurred while removing the participant")
-    }
-  }
-
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || isSending || !user?.id) return
-    setIsSending(true)
-    try {
-      const res = await fetch(`/api/debates/${id}/messages`, {
+      const response = await fetch(`/api/debates/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          content: newMessage,
-          role,
-        }),
-      })
-      if (!res.ok) throw new Error(await res.text())
-      setNewMessage("")
-    } catch {
-      toast.error("Failed to send message")
-    } finally {
-      setIsSending(false)
-    }
-  }
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "waiting":
-        return "from-yellow-500 to-orange-500"
-      case "in-progress":
-        return "from-green-500 to-emerald-500"
-      case "completed":
-        return "from-blue-500 to-indigo-500"
-      default:
-        return "from-gray-500 to-gray-600"
-    }
-  }
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case "waiting":
-        return <Clock className="w-5 h-5" />
-      case "in-progress":
-        return <Play className="w-5 h-5" />
-      case "completed":
-        return <Trophy className="w-5 h-5" />
-      default:
-        return <Pause className="w-5 h-5" />
-    }
-  }
-
-  const handleDeleteDebate = async () => {
-    if (!user?.id || !id) return
-    if (debate?.proUser?.clerkId !== user.id) {
-      toast.error("Only the debate creator can delete this debate")
-      return
-    }
-    if (!confirm("Are you sure you want to delete this debate? This action cannot be undone.")) {
-      return
-    }
-    try {
-      const res = await fetch(`/api/debates/${id}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: user.id,
-        }),
-      })
-      if (res.ok) {
-        toast.success("Debate deleted successfully")
-        router.push("/debates")
-      } else {
-        const errorData = await res.json()
-        toast.error(errorData.error || "Failed to delete debate")
-      }
-    } catch {
-      toast.error("An error occurred while deleting the debate")
-    }
-  }
-
-  const retryAIFeedback = async () => {
-    if (!id) return
-    setFeedbackLoading(true)
-    setFeedbackError(null)
-
-    try {
-      const res = await fetch(`/api/debates/${id}/ai-feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ debateId: id, userId: user?.id })
-      })
-
-      if (res.ok) {
-        const feedback = await res.json()
-        setAiFeedback(feedback)
-        setFeedbackLoading(false)
-        toast.success("AI feedback generated successfully!")
-      } else {
-        const errorData = await res.json()
-        setFeedbackError(errorData.error || "Failed to generate AI feedback")
-        setFeedbackLoading(false)
-      }
+        body: JSON.stringify({ action: "join_con", joinCode }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not join debate");
+      setDebate(data);
+      setRole("con");
+      setJoinCode("");
+      socket?.emit("join_debate", { debateId: id });
+      toast.success("You joined the Con side.");
     } catch (error) {
-      console.error("Manual feedback retry failed:", error)
-      setFeedbackError("Failed to generate AI feedback. Please try again.")
-      setFeedbackLoading(false)
+      toast.error(error instanceof Error ? error.message : "Could not join debate");
+    } finally {
+      setJoining(false);
     }
-  }
+  };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen relative overflow-hidden">
-        <AnimatedBackground />
-        <div className="relative z-10 container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
-          <GlowCard>
-            <div className="flex items-center space-x-4">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-              <span className="text-white text-lg">Loading debate arena...</span>
-            </div>
-          </GlowCard>
-        </div>
-      </div>
-    )
-  }
+  const startDebate = () => {
+    if (!socket || !isConnected) return toast.error("Realtime connection is still reconnecting.");
+    setStarting(true);
+    socket.timeout(8_000).emit("start_debate", { debateId: id }, (error: Error | null, result?: { ok: boolean; error?: string }) => {
+      if (error || !result?.ok) {
+        setStarting(false);
+        toast.error(result?.error || "The debate could not be started.");
+      }
+    });
+  };
 
-  if (!debate) {
-    return (
-      <div className="min-h-screen relative overflow-hidden">
-        <AnimatedBackground />
-        <div className="relative z-10 container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
-          <GlowCard className="text-center">
-            <div className="text-red-400 text-xl font-bold mb-4">Debate Not Found</div>
-            <p className="text-gray-300 mb-6">The debate you&apos;re looking for doesn&apos;t exist or failed to load.</p>
-            <Link href="/debates">
-              <NeonButton>
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Debates
-              </NeonButton>
-            </Link>
-          </GlowCard>
-        </div>
-      </div>
-    )
-  }
+  const endDebate = () => {
+    if (!socket || !confirm("End the debate now and send the recorded arguments for judging?")) return;
+    socket.emit("end_debate", { debateId: id });
+  };
 
-  const isDev = process.env.NODE_ENV !== "production"
+  const sendMessage = () => {
+    const content = newMessage.trim();
+    if (!socket || !content || sending) return;
+    setSending(true);
+    socket.timeout(8_000).emit("send_message", { debateId: id, content }, (error: Error | null, result?: { ok: boolean; error?: string }) => {
+      setSending(false);
+      if (error || !result?.ok) toast.error(result?.error || "Message could not be sent.");
+      else setNewMessage("");
+    });
+  };
+
+  const removeCon = async () => {
+    if (!confirm("Remove the current Con participant?")) return;
+    const response = await fetch(`/api/debates/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "remove_con" }),
+    });
+    const data = await response.json();
+    if (!response.ok) return toast.error(data.error || "Could not remove participant");
+    setDebate(data);
+    socket?.emit("join_debate", { debateId: id });
+    toast.success("Con participant removed.");
+  };
+
+  const deleteDebate = async () => {
+    if (!confirm("Delete this debate and all of its messages and scores?")) return;
+    const response = await fetch(`/api/debates/${id}`, { method: "DELETE" });
+    const data = await response.json();
+    if (!response.ok) return toast.error(data.error || "Could not delete debate");
+    toast.success("Debate deleted.");
+    router.push("/debates");
+  };
+
+  const retryAnalysis = async () => {
+    setRetrying(true);
+    setAnalysisStatus("analyzing");
+    try {
+      const response = await fetch(`/api/debates/${id}/ai-feedback`, { method: "POST" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Analysis failed");
+      setFeedback(data);
+      setAnalysisStatus("completed");
+      toast.success("Analysis updated.");
+    } catch (error) {
+      setAnalysisStatus("failed");
+      toast.error(error instanceof Error ? error.message : "Analysis failed");
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  if (loading) return <LoadingState />;
+  if (!debate) return <NotFoundState onBack={() => router.push("/debates")} />;
+
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <div className="min-h-screen overflow-hidden">
       <AnimatedBackground />
-      <div className="relative z-10 container mx-auto px-4 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4"
-        >
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 leading-tight">{debate.topic}</h1>
-            <div className="flex items-center gap-4">
-              <Badge className={`bg-gradient-to-r ${getStatusColor(debateStatus)} text-white px-3 py-1`}>
-                {getStatusIcon(debateStatus)}
-                <span className="ml-2 capitalize">{debateStatus.replace("-", " ")}</span>
-              </Badge>
-              <div className="flex items-center gap-2">
-                <span className="text-gray-400 text-sm">Debate ID:</span>
-                <code className="bg-gray-800/50 px-2 py-1 rounded text-white text-sm font-mono border border-gray-600">
-                  {id}
-                </code>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(id as string)
-                  }}
-                  className="text-gray-400 text-xs"
-                  title="Copy Debate ID"
-                >
-                  📋
-                </button>
+      <div className="relative z-10 mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
+        <motion.header initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} className="mb-7">
+          <button onClick={() => router.push("/debates")} className="mb-4 inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-white">
+            <ArrowLeft className="h-4 w-4" /> Back to arenas
+          </button>
+          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+            <div className="max-w-4xl">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <StatusBadge status={debate.status} />
+                <Badge variant="outline" className="border-white/10 bg-white/5 text-slate-300">
+                  {debate.isPublic ? <Users className="mr-1.5 h-3.5 w-3.5" /> : <LockKeyhole className="mr-1.5 h-3.5 w-3.5" />}
+                  {debate.isPublic ? "Public arena" : "Private arena"}
+                </Badge>
+                <span className={`inline-flex items-center gap-1.5 text-xs ${isConnected ? "text-emerald-300" : "text-amber-300"}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? "bg-emerald-400" : "animate-pulse bg-amber-400"}`} />
+                  {isConnected ? "Realtime connected" : "Reconnecting"}
+                </span>
               </div>
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <NeonButton variant="outline" onClick={() => router.push("/debates")}>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Arena
-            </NeonButton>
-            {debate.proUser?.clerkId === user?.id && (
-              <NeonButton
-                variant="outline"
-                onClick={handleDeleteDebate}
-                className="bg-red-500/20 border-red-500/30 text-red-300"
+              <h1 className="font-editorial text-balance text-3xl leading-tight tracking-[-0.025em] text-[#f4f3ef] sm:text-5xl">{debate.topic}</h1>
+              <button
+                onClick={() => navigator.clipboard.writeText(id).then(() => toast.success("Arena ID copied"))}
+                className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-slate-500 transition hover:text-slate-300"
               >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete Debate
-              </NeonButton>
+                {id} <Copy className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {role === "pro" && debate.status !== "in-progress" && (
+              <button onClick={deleteDebate} className="inline-flex items-center gap-2 self-start rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200 transition hover:bg-rose-500/20">
+                <Trash2 className="h-4 w-4" /> Delete arena
+              </button>
             )}
           </div>
-        </motion.div>
+        </motion.header>
 
-        {isDev && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6">
-            <GlowCard className="bg-yellow-500/10 border-yellow-500/30">
-              <div className="text-yellow-300 text-sm">
-                <div>
-                  <strong>Debug:</strong> Join code for Con: <span className="font-mono">{debate.joinCodeCon}</span>
-                </div>
-                <div>
-                  Debate ID: <span className="font-mono">{debate.id}</span>
-                </div>
-              </div>
-            </GlowCard>
-          </motion.div>
-        )}
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8"
-        >
-          <GlowCard glowColor="rgba(34, 197, 94, 0.3)">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-green-400">Pro Position</h3>
-              <Target className="w-6 h-6 text-green-400" />
-            </div>
-            {debate.proUser ? (
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center text-white font-bold text-lg">
-                  {(debate.proDisplayName ?? debate.proUser.username).charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <div className="text-white font-semibold">{debate.proDisplayName ?? debate.proUser.username}</div>
-                  {debate.proUser.clerkId === user?.id && (
-                    <Badge className="bg-green-500/20 text-green-300 border-green-500/30">You</Badge>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="text-gray-400 italic">Waiting for Pro participant...</div>
-            )}
-          </GlowCard>
-
-          <GlowCard glowColor="rgba(239, 68, 68, 0.3)" className="relative">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-red-400">Con Position</h3>
-              <Zap className="w-6 h-6 text-red-400" />
-            </div>
-            {debate.conUser ? (
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-gradient-to-r from-red-500 to-pink-500 flex items-center justify-center text-white font-bold text-lg">
-                  {debate.conUser.username.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1">
-                  <div className="text-white font-semibold">{debate.conUser.username}</div>
-                  {debate.conUser.clerkId === user?.id && (
-                    <Badge className="bg-red-500/20 text-red-300 border-red-500/30">You</Badge>
-                  )}
-                </div>
-                {debate.proUser?.clerkId === user?.id && (
-                  <button
-                    onClick={handleRemoveParticipant}
-                    className="p-1 rounded-full bg-red-500/20 border border-red-500/30 text-red-300"
-                    title="Remove Con participant"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="text-gray-400 italic">Waiting for Con participant...</div>
-            )}
-          </GlowCard>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="mb-8"
-        >
-          <GlowCard className="text-center">
-            <div className="flex items-center justify-center gap-4 mb-4">
-              <Clock className="w-8 h-8 text-indigo-400" />
-              <h3 className="text-2xl font-bold text-white">Debate Timer</h3>
-            </div>
-            <div className="text-4xl md:text-6xl font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 mb-2">
-              {debateStatus === "in-progress" && timeLeft !== null ? formatTime(timeLeft) : formatTime(debate.duration)}
-            </div>
-            {debateStatus === "completed" && <div className="text-red-400 font-semibold text-lg">Debate Concluded</div>}
-            {debateStatus === "waiting" && (
-              <div className="text-yellow-400 font-semibold text-lg">Preparing to Begin</div>
-            )}
-          </GlowCard>
-        </motion.div>
-
-        {role === "viewer" && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="mb-8"
-          >
-            <GlowCard>
-              <CardHeader>
-                <CardTitle className="text-2xl font-bold text-white flex items-center gap-2">
-                  <Users className="w-6 h-6" />
-                  Join the Debate
-                </CardTitle>
-                <CardDescription className="text-gray-300">Participate as Con or observe as a Viewer</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                    <span className="text-blue-300 font-medium text-sm">How to Join</span>
-                  </div>
-                  <div className="text-gray-300 text-sm space-y-1">
-                    <div>• <strong>Debate ID</strong> (above) = View this debate as spectator</div>
-                    <div>• <strong>Con Code</strong> (from creator) = Join as Con participant</div>
-                  </div>
-                </div>
-                {!debate.conUser && (
-                  <div>
-                    <Label className="text-white font-semibold mb-2 block">Join as Con Participant</Label>
-                    <div className="flex gap-3">
-                      <Input
-                        value={joinCode}
-                        onChange={(e) => setJoinCode(e.target.value)}
-                        placeholder={isDev ? "Enter con join code (see above)" : "Enter con join code"}
-                        className="bg-white/5 border-white/20 text-white placeholder:text-gray-400"
-                      />
-                      <NeonButton
-                        onClick={() => handleJoin("join_con")}
-                        disabled={!joinCode.trim() || !!debate.conUser || joinLoading}
-                      >
-                        {joinLoading ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        ) : null}
-                        Join as Con
-                      </NeonButton>
-                    </div>
-                    <div className="text-xs text-gray-400 mt-2">Enter the exact join code provided by the debate creator</div>
-                  </div>
-                )}
-                <div>
-                  <Label className="text-white font-semibold mb-2 block">Or observe the debate</Label>
-                  <NeonButton variant="outline" onClick={() => setRole("viewer")}>
-                    <Users className="w-4 h-4 mr-2" />
-                    Join as Viewer
-                  </NeonButton>
-                  <div className="text-xs text-gray-400 mt-2">You&apos;re currently viewing with the Debate ID</div>
-                </div>
-              </CardContent>
-            </GlowCard>
-          </motion.div>
-        )}
-
-        {id && (role === "pro" || role === "con") && user?.id && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="mb-8"
-          >
-            {role === "pro" && debateStatus === "waiting" && (
-              <div className="mb-6 flex justify-center">
-                <NeonButton onClick={handleStartDebate} disabled={!isConnected || startLoading} size="lg">
-                  {startLoading ? (
-                    <div className="animate-spin rounded-full h-5 w-5 mr-2"></div>
-                  ) : (
-                    <Play className="w-5 h-5 mr-2" />
-                  )}
-                  Launch Debate
-                </NeonButton>
-              </div>
-            )}
-            <GlowCard className="p-0 overflow-hidden">
-              <VideoDebateRoom debateId={id} userId={user.id} role={role} />
-            </GlowCard>
-            <GlowCard className="mt-6">
-              <div className="flex items-center gap-2 p-4 border-b border-white/10">
-                <MessageSquare className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-semibold text-white">Live Discussion</h3>
-              </div>
-              <ScrollArea className="h-64 p-4">
-                {messagesLoading ? (
-                  <div className="flex justify-center items-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
-                    <span className="ml-2 text-gray-400">Loading messages...</span>
-                  </div>
-                ) : (
-                  messages.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400">
-                      <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No messages yet. Start the conversation!</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {messages.map((message) => (
-                        <motion.div
-                          key={message.id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className={`p-3 rounded-lg max-w-[80%] ${
-                            message.role === "pro"
-                              ? "bg-green-500/20 border border-green-500/30"
-                              : message.role === "con"
-                                ? "bg-red-500/20 border border-red-500/30"
-                                : "bg-gray-500/20 border border-gray-500/30"
-                          }`}
-                        >
-                          <div className="font-medium text-sm flex items-center gap-2 mb-1">
-                            <span className="text-white">{message.sender?.username || message.role}</span>
-                            <Badge variant="outline" className="text-xs px-1.5 py-0.5">
-                              {message.role}
-                            </Badge>
-                          </div>
-                          <p className="whitespace-pre-wrap text-gray-200">{message.content}</p>
-                        </motion.div>
-                      ))}
-                    </div>
-                  )
-                )}
-              </ScrollArea>
-              <div className="p-4 border-t border-white/10 flex gap-3">
-                <Input
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder={
-                    debateStatus === "completed"
-                      ? "Debate has ended"
-                      : role === "pro"
-                        ? "State your argument as Pro..."
-                        : role === "con"
-                          ? "Counter the argument as Con..."
-                          : "Viewers cannot send messages"
-                  }
-                  disabled={debateStatus !== "in-progress" || !(role === "pro" || role === "con") || isSending}
-                  className="bg-white/5 border-white/20 text-white placeholder:text-gray-400"
-                />
-                <NeonButton
-                  onClick={handleSendMessage}
-                  disabled={
-                    debateStatus !== "in-progress" ||
-                    isSending ||
-                    !newMessage.trim() ||
-                    !(role === "pro" || role === "con")
-                  }
-                >
-                  {isSending ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  ) : null}
-                  Send
-                </NeonButton>
-              </div>
-            </GlowCard>
-          </motion.div>
-        )}
-
-        {debateStatus === "completed" && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
-            <GlowCard glowColor="rgba(139, 92, 246, 0.4)">
-              <div className="flex items-center gap-2 mb-6">
-                <Brain className="w-6 h-6 text-purple-400" />
-                <h3 className="text-2xl font-bold text-white">AI Performance Analysis</h3>
-              </div>
-              {feedbackLoading ? (
-                <div className="text-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-                  <p className="text-gray-300 text-lg">Analyzing debate performance...</p>
-                </div>
-              ) : feedbackError ? (
-                <div className="text-center py-12">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-500/20 flex items-center justify-center">
-                    <span className="text-red-400 text-2xl">⚠</span>
-                  </div>
-                  <p className="text-red-300 text-lg mb-2">Feedback Unavailable</p>
-                  <p className="text-gray-400 text-sm mb-4">{feedbackError}</p>
-                  <NeonButton onClick={retryAIFeedback} variant="outline">
-                    Retry
-                  </NeonButton>
-                </div>
-              ) : aiFeedback ? (
-                !aiFeedback.pro?.joined || !aiFeedback.con?.joined ? (
-                  <div className="text-center py-12">
-                    <Brain className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg text-gray-300 font-semibold mb-4">
-                      {aiFeedback.pro?.joined ? "Con participant did not join" : "Pro participant did not join"}
-                    </p>
-                  </div>
-                ) : aiFeedback.message === "Debate did not happen" ? (
-                  <div className="text-center py-12">
-                    <Brain className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg text-gray-300 font-semibold mb-4">Debate did not happen</p>
-                  </div>
-                ) : (
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <h4 className="text-xl font-semibold text-green-400 flex items-center gap-2">
-                        <Target className="w-5 h-5" />
-                        Pro Analysis
-                      </h4>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Trophy className="w-4 h-4 text-yellow-400" />
-                          <span className="text-gray-300">Score:</span>
-                          <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
-                            {aiFeedback.pro?.score ?? "N/A"}
-                          </Badge>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <TrendingUp className="w-4 h-4 text-red-400" />
-                            <span className="text-gray-300 font-medium">Areas for Improvement:</span>
-                          </div>
-                          <div className="text-gray-400 text-sm">
-                            {aiFeedback.pro?.mistakes && aiFeedback.pro.mistakes.length > 0 ? (
-                              <ul className="list-disc list-inside space-y-1">
-                                {aiFeedback.pro.mistakes.map((mistake, i) => (
-                                  <li key={i}>{mistake}</li>
-                                ))}
-                              </ul>
-                            ) : (
-                              "None identified"
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Lightbulb className="w-4 h-4 text-blue-400" />
-                            <span className="text-gray-300 font-medium">Suggestions:</span>
-                          </div>
-                          <div className="text-gray-400 text-sm">
-                            {aiFeedback.pro?.improvements && aiFeedback.pro.improvements.length > 0 ? (
-                              <ul className="list-disc list-inside space-y-1">
-                                {aiFeedback.pro.improvements.map((improvement, i) => (
-                                  <li key={i}>{improvement}</li>
-                                ))}
-                              </ul>
-                            ) : (
-                              "Keep up the great work!"
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Brain className="w-4 h-4 text-purple-400" />
-                            <span className="text-gray-300 font-medium">Detailed Feedback:</span>
-                          </div>
-                          <p className="text-gray-400 text-sm">
-                            {aiFeedback.pro?.feedback ?? "No detailed feedback available"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                      <h4 className="text-xl font-semibold text-red-400 flex items-center gap-2">
-                        <Zap className="w-5 h-5" />
-                        Con Analysis
-                      </h4>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2">
-                          <Trophy className="w-4 h-4 text-yellow-400" />
-                          <span className="text-gray-300">Score:</span>
-                          <Badge className="bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
-                            {aiFeedback.con?.score ?? "N/A"}
-                          </Badge>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <TrendingUp className="w-4 h-4 text-red-400" />
-                            <span className="text-gray-300 font-medium">Areas for Improvement:</span>
-                          </div>
-                          <div className="text-gray-400 text-sm">
-                            {aiFeedback.con?.mistakes && aiFeedback.con.mistakes.length > 0 ? (
-                              <ul className="list-disc list-inside space-y-1">
-                                {aiFeedback.con.mistakes.map((mistake, i) => (
-                                  <li key={i}>{mistake}</li>
-                                ))}
-                              </ul>
-                            ) : (
-                              "None identified"
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Lightbulb className="w-4 h-4 text-blue-400" />
-                            <span className="text-gray-300 font-medium">Suggestions:</span>
-                          </div>
-                          <div className="text-gray-400 text-sm">
-                            {aiFeedback.con?.improvements && aiFeedback.con.improvements.length > 0 ? (
-                              <ul className="list-disc list-inside space-y-1">
-                                {aiFeedback.con.improvements.map((improvement, i) => (
-                                  <li key={i}>{improvement}</li>
-                                ))}
-                              </ul>
-                            ) : (
-                              "Keep up the great work!"
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <Brain className="w-4 h-4 text-purple-400" />
-                            <span className="text-gray-300 font-medium">Detailed Feedback:</span>
-                          </div>
-                          <p className="text-gray-400 text-sm">
-                            {aiFeedback.con?.feedback ?? "No detailed feedback available"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              ) : (
-                <div className="text-center py-8 text-gray-400">
-                  <Brain className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p className="mb-4">AI feedback will appear here once the debate concludes.</p>
-                  <NeonButton onClick={retryAIFeedback} variant="outline">
-                    <Brain className="w-4 h-4 mr-2" />
-                    Generate AI Feedback Now
-                  </NeonButton>
-                </div>
-              )}
-            </GlowCard>
-          </motion.div>
-        )}
-
-        {id && role === "viewer" && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-            <GlowCard className="text-center py-12">
-              <Users className="w-16 h-16 mx-auto mb-4 text-indigo-400 opacity-50" />
-              <h3 className="text-2xl font-bold text-white mb-4">Spectator Mode</h3>
-              <p className="text-gray-300 text-lg mb-6">
-                Only Pro and Con participants can join the live video debate.
+        <div className="mb-6 grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
+          <ParticipantCard side="pro" user={debate.proUser} isCurrent={role === "pro"} ready={presence.proReady} />
+          <GlowCard className="flex min-w-48 items-center justify-center p-5 text-center">
+            <div>
+              <Clock3 className={`mx-auto mb-2 h-5 w-5 ${debate.status === "in-progress" ? "text-emerald-300" : "text-[#829ee3]"}`} />
+              <div className="font-mono text-4xl font-bold tabular-nums text-white">{formattedTime}</div>
+              <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-500">
+                {debate.status === "waiting" ? "Ready room" : debate.status === "in-progress" ? "Time remaining" : "Finished"}
               </p>
-              <p className="text-gray-400">Please wait for the debate to finish to see the AI feedback and analysis.</p>
-            </GlowCard>
-          </motion.div>
+            </div>
+          </GlowCard>
+          <ParticipantCard side="con" user={debate.conUser || null} isCurrent={role === "con"} ready={presence.conReady} onRemove={role === "pro" && debate.status === "waiting" && debate.conUser ? removeCon : undefined} />
+        </div>
+
+        {role === "viewer" && debate.status === "waiting" && !debate.conUser && user && (
+          <GlowCard className="mb-6 border-[#425a8f]">
+            <div className="grid gap-5 md:grid-cols-[1fr_auto] md:items-end">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#829ee3]">Open Con position</p>
+                <h2 className="mt-2 text-xl font-semibold text-white">Have an invitation code?</h2>
+                <p className="mt-1 text-sm text-slate-400">Join the opposing side. The code is checked securely and is never exposed to spectators.</p>
+              </div>
+              <div className="flex gap-2">
+                <Input value={joinCode} onChange={(event) => setJoinCode(event.target.value.toUpperCase())} maxLength={8} placeholder="8-character code" className="h-11 bg-white/5 font-mono uppercase text-white" />
+                <NeonButton onClick={joinAsCon} disabled={joining || joinCode.length !== 8}>
+                  {joining ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Join Con
+                </NeonButton>
+              </div>
+            </div>
+          </GlowCard>
+        )}
+
+        {role === "pro" && debate.joinCodeCon && debate.status === "waiting" && !debate.conUser && (
+          <GlowCard className="mb-6 border-[#425a8f]">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#829ee3]">Opponent invitation</p>
+                <p className="mt-1 text-sm text-slate-400">Share this private code only with your intended Con participant.</p>
+              </div>
+              <button onClick={() => navigator.clipboard.writeText(debate.joinCodeCon as string).then(() => toast.success("Join code copied"))} className="inline-flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-mono text-lg font-bold tracking-[0.22em] text-white transition hover:bg-white/10">
+                {debate.joinCodeCon} <Copy className="h-4 w-4 text-[#829ee3]" />
+              </button>
+            </div>
+          </GlowCard>
+        )}
+
+        {(role === "pro" || role === "con") && user && (
+          <GlowCard className="mb-6 overflow-hidden p-0">
+            <VideoDebateRoom debateId={id} userId={user.id} role={role} isDebateActive={debate.status === "in-progress"} />
+          </GlowCard>
+        )}
+
+        {debate.status === "waiting" && role === "pro" && (
+          <div className="mb-6 flex flex-col items-center gap-3 text-center">
+            <NeonButton onClick={startDebate} disabled={!canStart || starting} size="lg">
+              {starting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Play className="mr-2 h-5 w-5" />}
+              Start debate
+            </NeonButton>
+            <p className="text-sm text-slate-400">
+              {!debate.conUser ? "Waiting for a Con participant." : !presence.proReady || !presence.conReady ? "Both participants must start camera and microphone first." : "Both sides are ready."}
+            </p>
+          </div>
+        )}
+
+        {debate.status === "in-progress" && role === "pro" && (
+          <div className="mb-6 flex justify-center">
+            <button onClick={endDebate} className="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20">End debate early</button>
+          </div>
+        )}
+
+        {(role === "pro" || role === "con") && (
+          <DiscussionPanel messages={messages} role={role} status={debate.status} value={newMessage} sending={sending} onChange={setNewMessage} onSend={sendMessage} />
+        )}
+
+        {role === "viewer" && debate.status !== "completed" && (
+          <GlowCard className="text-center">
+            <Radio className="mx-auto mb-3 h-7 w-7 text-[#829ee3]" />
+            <h2 className="text-xl font-semibold text-white">Spectator view</h2>
+            <p className="mx-auto mt-2 max-w-xl text-sm text-slate-400">You’ll see the timer, participant readiness, and the final AI judgement update here in real time.</p>
+          </GlowCard>
+        )}
+
+        {debate.status === "completed" && (
+          <ResultsPanel feedback={feedback} status={analysisStatus} retrying={retrying} canRetry={role === "pro" || role === "con"} onRetry={retryAnalysis} />
         )}
       </div>
     </div>
-  )
+  );
 }
+
+function StatusBadge({ status }: { status: DebateStatus }) {
+  const config = status === "in-progress"
+    ? { label: "Live", className: "border-emerald-400/30 bg-emerald-500/15 text-emerald-200", icon: <Radio className="mr-1.5 h-3.5 w-3.5 animate-pulse" /> }
+    : status === "completed"
+      ? { label: "Completed", className: "border-[#5874ad] bg-[#1a2945] text-[#b5c6f2]", icon: <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> }
+      : { label: "Waiting", className: "border-amber-400/30 bg-amber-500/15 text-amber-200", icon: <Clock3 className="mr-1.5 h-3.5 w-3.5" /> };
+  return <Badge variant="outline" className={config.className}>{config.icon}{config.label}</Badge>;
+}
+
+function ParticipantCard({ side, user, isCurrent, ready, onRemove }: { side: "pro" | "con"; user: DebateUser | null; isCurrent: boolean; ready: boolean; onRemove?: () => void }) {
+  const pro = side === "pro";
+  return (
+    <GlowCard glowColor={pro ? "rgba(16,185,129,.2)" : "rgba(244,63,94,.2)"} className="p-5">
+      <div className="flex items-center gap-4">
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border text-lg font-bold ${pro ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200" : "border-rose-400/25 bg-rose-500/10 text-rose-200"}`}>
+          {user?.username.charAt(0).toUpperCase() || <UserRound className="h-5 w-5" />}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2"><span className={`text-xs font-bold uppercase tracking-[0.2em] ${pro ? "text-emerald-300" : "text-rose-300"}`}>{side}</span>{isCurrent && <Badge variant="outline" className="h-5 border-white/10 text-[10px] text-slate-300">You</Badge>}</div>
+          <p className="mt-1 truncate font-semibold text-white">{user?.username || "Position open"}</p>
+          {user && <p className={`mt-1 text-xs ${ready ? "text-emerald-300" : "text-slate-500"}`}>{ready ? "Camera ready" : "Not media-ready"}</p>}
+        </div>
+        {onRemove && <button onClick={onRemove} className="rounded-lg p-2 text-slate-500 transition hover:bg-rose-500/10 hover:text-rose-300" title="Remove participant"><X className="h-4 w-4" /></button>}
+      </div>
+    </GlowCard>
+  );
+}
+
+function DiscussionPanel({ messages, role, status, value, sending, onChange, onSend }: { messages: DebateMessage[]; role: Role; status: DebateStatus; value: string; sending: boolean; onChange: (value: string) => void; onSend: () => void }) {
+  return (
+    <GlowCard className="mb-6 p-0">
+      <div className="flex items-center gap-2 border-b border-[#282e38] px-5 py-4"><MessageSquare className="h-5 w-5 text-[#829ee3]" /><h2 className="font-semibold text-white">Argument chat</h2></div>
+      <ScrollArea className="h-64 px-5 py-4">
+        {messages.length ? <div className="space-y-3">{messages.map((message) => (
+          <div key={message.id} className={`max-w-[88%] rounded-lg border px-4 py-3 ${message.role === role ? "ml-auto border-[#425a8f] bg-[#172035]" : "border-[#303744] bg-[#171c24]"}`}>
+            <div className="mb-1 flex items-center gap-2 text-xs"><span className="font-semibold text-slate-300">{message.sender.username}</span><span className="uppercase text-slate-500">{message.role}</span></div>
+            <p className="whitespace-pre-wrap text-sm leading-6 text-slate-200">{message.content}</p>
+          </div>
+        ))}</div> : <div className="flex h-48 items-center justify-center text-sm text-slate-500">No chat arguments yet.</div>}
+      </ScrollArea>
+      <div className="flex gap-2 border-t border-white/10 p-4">
+        <Input value={value} maxLength={2000} onChange={(event) => onChange(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); onSend(); } }} disabled={status !== "in-progress" || sending} placeholder={status === "in-progress" ? "Add a written argument…" : "Chat opens when the debate starts"} className="h-11 bg-white/5 text-white" />
+        <NeonButton onClick={onSend} disabled={status !== "in-progress" || sending || !value.trim()}>{sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}</NeonButton>
+      </div>
+    </GlowCard>
+  );
+}
+
+function ResultsPanel({ feedback, status, retrying, canRetry, onRetry }: { feedback: DebateFeedback | null; status: string; retrying: boolean; canRetry: boolean; onRetry: () => void }) {
+  if (status === "analyzing" || (!feedback && status !== "failed")) return (
+    <GlowCard glowColor="rgba(139,92,246,.28)" className="text-center">
+      <Loader2 className="mx-auto mb-4 h-9 w-9 animate-spin text-[#829ee3]" /><h2 className="text-2xl font-semibold text-white">Judging the debate</h2><p className="mt-2 text-slate-400">Validating the transcript, scoring both sides, and updating the leaderboard…</p>
+    </GlowCard>
+  );
+  if (!feedback || feedback.status === "failed") return (
+    <GlowCard className="text-center"><Brain className="mx-auto mb-3 h-8 w-8 text-rose-300" /><h2 className="text-xl font-semibold text-white">Analysis needs another try</h2><p className="mt-2 text-sm text-slate-400">{feedback?.message || "The judgement could not be completed."}</p>{canRetry ? <div className="mt-5"><NeonButton onClick={onRetry} disabled={retrying}>{retrying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Retry analysis</NeonButton></div> : <p className="mt-4 text-xs text-slate-500">A debate participant can retry the judgement.</p>}</GlowCard>
+  );
+  if (feedback.status === "insufficient") return (
+    <GlowCard className="text-center"><ShieldCheck className="mx-auto mb-3 h-8 w-8 text-amber-300" /><h2 className="text-xl font-semibold text-white">No winner selected</h2><p className="mx-auto mt-2 max-w-xl text-sm text-slate-400">{feedback.summary}</p></GlowCard>
+  );
+  const winnerLabel = feedback.winner === "tie" ? "The debate is a tie" : `${feedback.winner === "pro" ? "Pro" : "Con"} wins`;
+  return (
+    <GlowCard glowColor="rgba(245,158,11,.28)" className="overflow-hidden">
+      <div className="mb-7 text-center"><Crown className="mx-auto mb-3 h-10 w-10 text-amber-300" /><p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-300">AI judgement</p><h2 className="mt-2 text-3xl font-bold text-white">{winnerLabel}</h2><p className="mx-auto mt-3 max-w-3xl text-sm leading-6 text-slate-300">{feedback.summary}</p></div>
+      <div className="grid gap-4 lg:grid-cols-2"><ResultSide side="pro" result={feedback.pro} winner={feedback.winner === "pro"} /><ResultSide side="con" result={feedback.con} winner={feedback.winner === "con"} /></div>
+    </GlowCard>
+  );
+}
+
+function ResultSide({ side, result, winner }: { side: "pro" | "con"; result?: ParticipantResult; winner: boolean }) {
+  const metrics = [["Logic", result?.logic], ["Clarity", result?.clarity], ["Persuasion", result?.persuasiveness], ["Tone", result?.tone]] as const;
+  return (
+    <div className={`rounded-lg border p-5 ${winner ? "border-amber-400/30 bg-amber-500/[0.07]" : "border-[#303744] bg-[#0f1319]"}`}>
+      <div className="mb-5 flex items-center justify-between"><div className="flex items-center gap-2"><Target className={`h-5 w-5 ${side === "pro" ? "text-emerald-300" : "text-rose-300"}`} /><h3 className="text-xl font-semibold uppercase text-white">{side}</h3></div><div className="flex items-center gap-2"><span className="text-3xl font-bold text-white">{result?.score?.toFixed(1) ?? "—"}</span><span className="text-xs text-slate-500">/ 10</span></div></div>
+      <div className="mb-5 grid grid-cols-2 gap-2">{metrics.map(([label, value]) => <div key={label} className="rounded-xl bg-black/20 p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 font-semibold text-slate-200">{value?.toFixed(1) ?? "—"}</p></div>)}</div>
+      <p className="text-sm leading-6 text-slate-300">{result?.feedback}</p>
+      {!!result?.improvements?.length && <div className="mt-4"><p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#829ee3]">Next steps</p><ul className="space-y-1.5 text-sm text-slate-400">{result.improvements.map((item) => <li key={item} className="flex gap-2"><span className="text-[#829ee3]">•</span>{item}</li>)}</ul></div>}
+    </div>
+  );
+}
+
+function LoadingState() { return <div className="flex min-h-screen items-center justify-center bg-[#0b0e13]"><Loader2 className="h-8 w-8 animate-spin text-[#829ee3]" /></div>; }
+function NotFoundState({ onBack }: { onBack: () => void }) { return <div className="flex min-h-screen items-center justify-center bg-slate-950 px-4"><GlowCard className="max-w-md text-center"><Trophy className="mx-auto mb-4 h-10 w-10 text-slate-500" /><h1 className="text-2xl font-semibold text-white">Arena unavailable</h1><p className="mt-2 text-slate-400">It may be private, deleted, or the link is incorrect.</p><div className="mt-5"><NeonButton onClick={onBack}><ArrowLeft className="mr-2 h-4 w-4" />Back to arenas</NeonButton></div></GlowCard></div>; }

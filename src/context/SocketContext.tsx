@@ -1,57 +1,43 @@
 "use client";
+
 import { createContext, useContext, useEffect, useState } from "react";
-import io from "socket.io-client";
+import { io, type Socket } from "socket.io-client";
+import { useAuth } from "@/context/AuthContext";
 
-type SocketType = ReturnType<typeof io>;
+type SocketContextValue = { socket: Socket | null; isConnected: boolean };
 
-type SocketContextType = {
-  socket: SocketType | null;
-  isConnected: boolean;
-};
+const SocketContext = createContext<SocketContextValue>({ socket: null, isConnected: false });
 
-const SocketContext = createContext<SocketContextType>({
-  socket: null,
-  isConnected: false,
-});
+export const useSocket = () => useContext(SocketContext);
 
-export const useSocket = () => {
-  return useContext(SocketContext);
-};
-
-export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
-  const [socket, setSocket] = useState<SocketType | null>(null);
+export function SocketProvider({ children }: { children: React.ReactNode }) {
+  const { isLoaded, user } = useAuth();
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    const socketInstance = io({
+    if (!isLoaded) return;
+    const instance = io({
       path: "/api/socket.io",
-      autoConnect: true,
-      transports: ['websocket', 'polling'],
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 5_000,
+      withCredentials: true,
     });
-
-    socketInstance.on("connect", () => {
-      setIsConnected(true);
-    });
-
-    socketInstance.on("disconnect", () => {
+    instance.on("connect", () => setIsConnected(true));
+    instance.on("disconnect", () => setIsConnected(false));
+    instance.on("connect_error", (error) => {
+      console.warn("Realtime connection unavailable:", error.message);
       setIsConnected(false);
     });
-
-    socketInstance.on("connect_error", (error: Error) => {
-      console.error("❌ Connection error:", error.message);
-      setIsConnected(false);
-    });
-
-    setSocket(socketInstance);
-
+    setSocket(instance);
     return () => {
-      socketInstance.disconnect();
+      instance.disconnect();
+      setSocket(null);
+      setIsConnected(false);
     };
-  }, []);
+  }, [isLoaded, user?.id]);
 
-  return (
-    <SocketContext.Provider value={{ socket, isConnected }}>
-      {children}
-    </SocketContext.Provider>
-  );
-};
+  return <SocketContext.Provider value={{ socket, isConnected }}>{children}</SocketContext.Provider>;
+}

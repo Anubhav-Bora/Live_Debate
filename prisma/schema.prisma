@@ -8,12 +8,13 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  clerkId   String   @unique
-  username  String   @unique
-  email     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  clerkId      String?  @unique // Legacy identifier retained only for existing rows.
+  username     String   @unique
+  email        String   @unique
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Relations
   scores         Score[]
@@ -23,6 +24,20 @@ model User {
   debatesCon     Debate[]    @relation("ConUser")
   userBadges     UserBadge[]
   votes          Vote[]
+  sessions       Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 model Debate {
@@ -35,6 +50,10 @@ model Debate {
   startTime      DateTime?
   endTime        DateTime?
   aiFeedback     Json?
+  analysisStatus String    @default("idle")
+  winner         String?
+  proTranscript  String    @default("")
+  conTranscript  String    @default("")
   joinCodeCon    String    @unique
   isPublic       Boolean   @default(true)
   proDisplayName String?
@@ -79,6 +98,8 @@ model Score {
   // Relations
   debate Debate @relation(fields: [debateId], references: [id])
   user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([userId, debateId])
 }
 
 model Badge {

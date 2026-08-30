@@ -1,641 +1,392 @@
-import React, { useEffect, useRef, useState } from "react";
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import SimplePeer from "simple-peer";
+import { Camera, CameraOff, Mic, MicOff, Radio, RefreshCw, Video, Wifi, WifiOff } from "lucide-react";
 import { useSocket } from "@/context/SocketContext";
 import { useAdvancedSpeechRecognition } from "@/hooks/useAdvancedSpeechRecognition";
 
-// Define custom types
-type SignalCallback = (data: SignalData) => void;
-type StreamCallback = (stream: MediaStream) => void;
-type ErrorCallback = (error: Error) => void;
-type ConnectCallback = () => void;
-type CloseCallback = () => void;
-type IceStateChangeCallback = (state: string) => void;
-
+type SignalData = Record<string, unknown>;
 type PeerInstance = {
-  on(event: "signal", callback: SignalCallback): void;
-  on(event: "stream", callback: StreamCallback): void;
-  on(event: "error", callback: ErrorCallback): void;
-  on(event: "connect", callback: ConnectCallback): void;
-  on(event: "close", callback: CloseCallback): void;
-  on(event: "iceStateChange", callback: IceStateChangeCallback): void;
-  off(event: "signal", callback: SignalCallback): void;
-  off(event: "stream", callback: StreamCallback): void;
-  off(event: "error", callback: ErrorCallback): void;
-  off(event: "connect", callback: ConnectCallback): void;
-  off(event: "close", callback: CloseCallback): void;
-  off(event: "iceStateChange", callback: IceStateChangeCallback): void;
-  signal: (data: SignalData) => void;
-  destroy: () => void;
+  on(event: string, callback: (...args: never[]) => void): void;
+  signal(data: SignalData): void;
+  destroy(): void;
 };
-
-interface SignalData {
-  type: string;
-  sdp?: string;
-  candidate?: {
-    candidate: string;
-    sdpMid?: string;
-    sdpMLineIndex?: number;
-  };
-}
 
 interface VideoDebateRoomProps {
   debateId: string;
   userId: string;
   role: "pro" | "con";
+  isDebateActive: boolean;
 }
 
-interface TranscriptUpdateData {
-  role: string;
-  transcript: string;
-}
-
-interface SignalEventData {
-  userId: string;
-  signal: SignalData;
-}
-
-export default function VideoDebateRoom({ debateId, userId, role }: VideoDebateRoomProps) {
+export default function VideoDebateRoom({ debateId, role, isDebateActive }: VideoDebateRoomProps) {
   const { socket, isConnected } = useSocket();
-  const [stream, setStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [peer, setPeer] = useState<PeerInstance | null>(null);
-  const [connected, setConnected] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const [proTranscript, setProTranscript] = useState("");
-  const [conTranscript, setConTranscript] = useState("");
-  const [mediaError, setMediaError] = useState<string | null>(null);
-  const lastLocalStream = useRef<MediaStream | null>(null);
-  const lastRemoteStream = useRef<MediaStream | null>(null);
-  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const streamRef = useRef<MediaStream | null>(null);
   const peerRef = useRef<PeerInstance | null>(null);
+  const transcriptSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // User interaction states
-  const [userInteracted, setUserInteracted] = useState(false);
-  const [showCameraPrompt, setShowCameraPrompt] = useState(true);
-  const [isStartingCamera, setIsStartingCamera] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [peerConnected, setPeerConnected] = useState(false);
+  const [startingMedia, setStartingMedia] = useState(false);
+  const [mediaError, setMediaError] = useState("");
+  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState("");
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  const [proTranscript, setProTranscript] = useState("");
+  const [conTranscript, setConTranscript] = useState("");
 
-  // Enhanced speech recognition with better configuration
-  // Only enable when camera is started AND user has interacted
-  const speechEnabled = !!stream && userInteracted;
-
-  const {
-    transcript,
-    finalTranscript,
-    interimTranscript,
-    isListening,
-    hasError: speechError,
-    errorMessage: speechErrorMessage,
-    isSupported: speechSupported,
-    clearTranscript,
-  } = useAdvancedSpeechRecognition(speechEnabled, {
+  const speechEnabled = Boolean(stream && isDebateActive && audioEnabled);
+  const speech = useAdvancedSpeechRecognition(speechEnabled, {
     language: "en-US",
     continuous: true,
     interimResults: true,
   });
+  const replaceSpeechTranscript = speech.replaceTranscript;
 
-  // Log speech recognition state changes
-  useEffect(() => {
-    console.log("[VideoDebateRoom] Speech Recognition State:", {
-      speechEnabled,
-      isListening,
-      hasError: speechError,
-      isSupported: speechSupported,
-      transcriptLength: transcript.length
-    });
-  }, [speechEnabled, isListening, speechError, speechSupported, transcript]);
-
-  // Keep refs updated
-  useEffect(() => {
-    streamRef.current = stream;
-  }, [stream]);
-
-  useEffect(() => {
-    peerRef.current = peer;
-  }, [peer]);
-
-  // AUTO STOP CAMERA on component unmount ONLY
-  useEffect(() => {
-    return () => {
-      console.log("[VideoDebateRoom] Component unmounting - stopping camera...");
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => {
-          track.stop();
-          console.log("[VideoDebateRoom] Stopped track:", track.kind);
-        });
-      }
-      if (peerRef.current) {
-        console.log("[VideoDebateRoom] Destroying peer connection...");
-        peerRef.current.destroy();
-      }
-    };
+  const refreshDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter((device) => device.kind === "videoinput");
+    setVideoDevices(cameras);
+    setSelectedDeviceId((current) => current || cameras[0]?.deviceId || "");
   }, []);
 
-  // Get available video devices - ONLY enumerate, don't auto-start
   useEffect(() => {
-    // Request permissions first, then enumerate
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then(stream => {
-        // Stop the stream immediately - we just needed permissions
-        stream.getTracks().forEach(track => track.stop());
+    refreshDevices().catch(() => undefined);
+  }, [refreshDevices]);
 
-        return navigator.mediaDevices.enumerateDevices();
-      })
-      .then(devices => {
-        const videoInputs = devices.filter(device => device.kind === 'videoinput');
-        setVideoDevices(videoInputs);
-        const realCamera = videoInputs.find(device =>
-          !device.label.toLowerCase().includes('virtual') &&
-          !device.label.toLowerCase().includes('obs')
-        );
-        setSelectedDeviceId(realCamera?.deviceId || videoInputs[0]?.deviceId || "");
-      })
-      .catch(err => {
-        console.error("Error getting device permissions:", err);
-        setMediaError("Could not access camera permissions: " + err.message);
-      });
+  const stopMedia = useCallback(() => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    setStream(null);
+    setRemoteStream(null);
+    peerRef.current?.destroy();
+    peerRef.current = null;
+    setPeerConnected(false);
   }, []);
 
-  // Manual camera start function
-  const handleStartCamera = async () => {
-    if (!selectedDeviceId) {
-      setMediaError("No camera device selected");
+  useEffect(() => stopMedia, [stopMedia]);
+
+  const startMedia = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMediaError("Camera and microphone access require a modern browser and HTTPS (or localhost).");
       return;
     }
-
-    setIsStartingCamera(true);
-    setUserInteracted(true);
-    setShowCameraPrompt(false);
-
+    setStartingMedia(true);
+    setMediaError("");
     try {
-      console.log("[VideoDebateRoom] Starting camera with user interaction...");
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          deviceId: { exact: selectedDeviceId },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 44100,
-        }
+      const nextStream = await navigator.mediaDevices.getUserMedia({
+        video: selectedDeviceId
+          ? { deviceId: { exact: selectedDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
-
-      console.log("[VideoDebateRoom] Camera started successfully");
-      setStream(mediaStream);
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = mediaStream;
-      }
-      setMediaError(null);
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      console.error("[VideoDebateRoom] getUserMedia error:", error);
-      setMediaError("Could not access camera: " + (error.message || "Unknown error"));
-      setUserInteracted(false);
-      setShowCameraPrompt(true);
-    }
-    finally {
-      setIsStartingCamera(false);
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = nextStream;
+      setStream(nextStream);
+      setAudioEnabled(true);
+      setVideoEnabled(true);
+      await refreshDevices();
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : "";
+      setMediaError(
+        name === "NotAllowedError"
+          ? "Camera or microphone permission was denied. Allow access in this site's browser settings."
+          : name === "NotFoundError"
+            ? "No camera or microphone was found. Connect a device and retry."
+            : "The camera or microphone could not be started. Close other apps using it and retry.",
+      );
+    } finally {
+      setStartingMedia(false);
     }
   };
 
-  // Join debate room and handle signaling - WAIT for socket connection
   useEffect(() => {
-    if (!socket || !isConnected || !stream) {
-      console.log("[VideoDebateRoom] Waiting for requirements:", {
-        socket: !!socket,
-        isConnected,
-        stream: !!stream
+    if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+  }, [stream]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+  }, [remoteStream]);
+
+  const createPeer = useCallback(() => {
+    if (!socket || !isConnected || !streamRef.current) return null;
+    if (peerRef.current) return peerRef.current;
+
+    const iceServers: RTCIceServer[] = [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+    ];
+    if (process.env.NEXT_PUBLIC_TURN_URL) {
+      iceServers.push({
+        urls: process.env.NEXT_PUBLIC_TURN_URL,
+        username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+        credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL,
       });
-      return;
     }
 
-    console.log(`[VideoDebateRoom] Joining debate room: debate_${debateId} as ${role} (${userId})`);
-    socket.emit("join_debate", { debateId, userId, role });
+    const peer = new SimplePeer({
+      initiator: role === "pro",
+      trickle: true,
+      stream: streamRef.current,
+      config: { iceServers },
+    }) as PeerInstance;
+    peerRef.current = peer;
+    peer.on("signal", ((signal: SignalData) => socket.emit("signal", { debateId, signal })) as never);
+    peer.on("stream", ((incoming: MediaStream) => {
+      setRemoteStream(incoming);
+      setPeerConnected(true);
+      setMediaError("");
+    }) as never);
+    peer.on("connect", (() => setPeerConnected(true)) as never);
+    peer.on("close", (() => {
+      setPeerConnected(false);
+      if (peerRef.current === peer) peerRef.current = null;
+    }) as never);
+    peer.on("error", ((error: Error) => {
+      console.warn("Peer connection failed:", error.message);
+      setPeerConnected(false);
+      setMediaError("Video connection was interrupted. It will reconnect when both participants are ready.");
+      if (peerRef.current === peer) peerRef.current = null;
+    }) as never);
+    return peer;
+  }, [debateId, isConnected, role, socket]);
 
-    // Reduced timeout and better error handling
-    const timeout = setTimeout(() => {
-      const initiator = role === "pro";
-      console.log(`[VideoDebateRoom] Creating peer as ${initiator ? 'initiator' : 'receiver'}`);
-
-      // Enhanced ICE servers for production
-      const iceServers = [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        {
-          urls: 'turn:openrelay.metered.ca:80',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        },
-        {
-          urls: 'turn:openrelay.metered.ca:443',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        },
-        {
-          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        }
-      ];
-
-      const p = new SimplePeer({
-        initiator,
-        trickle: false,
-        stream,
-        config: {
-          iceServers,
-          iceTransportPolicy: 'all',
-        }
-      }) as PeerInstance;
-
-      setPeer(p);
-
-      p.on("signal", (data: SignalData) => {
-        console.log("[VideoDebateRoom] Sending signal:", data.type);
-        if (socket && isConnected) {
-          socket.emit("signal", { debateId, userId, signal: data });
-        } else {
-          console.error("[VideoDebateRoom] Cannot send signal - socket not connected");
-        }
-      });
-
-      p.on("stream", (remoteStream: MediaStream) => {
-        console.log("[VideoDebateRoom] Received remote stream");
-        setRemoteStream(remoteStream);
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-          remoteVideoRef.current.play().catch(console.warn);
-        }
-        setConnected(true);
-        setMediaError(null);
-      });
-
-      p.on("error", (err: Error) => {
-        console.error("[VideoDebateRoom] Peer connection error:", err);
-        setMediaError("Connection error: " + err.message);
-        setConnected(false);
-      });
-
-      p.on("connect", () => {
-        console.log("[VideoDebateRoom] Peer connected successfully");
-        setConnected(true);
-        setMediaError(null);
-      });
-
-      p.on("close", () => {
-        console.log("[VideoDebateRoom] Peer connection closed");
-        setConnected(false);
-      });
-
-      p.on("iceStateChange", (state: string) => {
-        console.log("[VideoDebateRoom] ICE connection state:", state);
-        if (state === 'failed' || state === 'disconnected') {
-          setConnected(false);
-        }
-      });
-
-      const onSignal = ({ userId: fromId, signal }: SignalEventData) => {
-        if (fromId !== userId) {
-          console.log("[VideoDebateRoom] Received signal from other peer:", signal.type);
-          try {
-            p.signal(signal);
-          } catch (err) {
-            console.error("[VideoDebateRoom] Error signaling peer:", err);
-          }
-        }
-      };
-
-      socket.on("signal", onSignal);
-
-      return () => {
-        socket.off("signal", onSignal);
-        if (p) {
-          console.log("[VideoDebateRoom] Destroying peer connection");
-          p.destroy();
-        }
-      };
-    }, 1000);
-
+  useEffect(() => {
+    if (!socket || !isConnected || !stream) return;
+    const onPeerReady = () => createPeer();
+    const onSignal = ({ fromRole, signal }: { fromRole: string; signal: SignalData }) => {
+      if (fromRole === role) return;
+      try {
+        createPeer()?.signal(signal);
+      } catch (error) {
+        console.warn("Could not apply peer signal:", error);
+      }
+    };
+    socket.on("peer_ready", onPeerReady);
+    socket.on("signal", onSignal);
+    socket.emit("join_debate", { debateId }, (result: { ok?: boolean }) => {
+      if (result?.ok) socket.emit("media_ready", { debateId });
+    });
     return () => {
-      clearTimeout(timeout);
+      socket.emit("media_not_ready", { debateId });
+      socket.off("peer_ready", onPeerReady);
+      socket.off("signal", onSignal);
+      peerRef.current?.destroy();
+      peerRef.current = null;
+      setPeerConnected(false);
     };
-  }, [socket, isConnected, stream, debateId, userId, role]);
+  }, [createPeer, debateId, isConnected, role, socket, stream]);
 
-  // Attach streams to video elements
   useEffect(() => {
-    if (localVideoRef.current && stream && lastLocalStream.current !== stream) {
-      localVideoRef.current.srcObject = stream;
-      lastLocalStream.current = stream;
-      localVideoRef.current.play().catch(console.warn);
-    }
-    if (remoteVideoRef.current && remoteStream && lastRemoteStream.current !== remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-      lastRemoteStream.current = remoteStream;
-      remoteVideoRef.current.play().catch(console.warn);
-    }
-  }, [stream, remoteStream]);
-
-  // Send transcript updates to other participants
-  useEffect(() => {
-    if (!socket || !isConnected || !debateId || !role) return;
-
-    // Only send final transcript to avoid overwhelming the server
-    if (finalTranscript) {
-      socket.emit("transcript_update", {
-        debateId,
-        userId,
-        role,
-        transcript: finalTranscript,
-      });
-    }
-  }, [finalTranscript, socket, isConnected, debateId, userId, role]);
-
-  // Listen for transcript updates from other participants
-  useEffect(() => {
-    if (!socket || !isConnected) return;
-    const onTranscriptUpdate = ({ role: updateRole, transcript: updateTranscript }: TranscriptUpdateData) => {
-      if (updateRole === "pro") setProTranscript(updateTranscript);
-      if (updateRole === "con") setConTranscript(updateTranscript);
+    if (!socket) return;
+    const onTranscript = ({ role: changedRole, transcript }: { role: "pro" | "con"; transcript: string }) => {
+      if (changedRole === "pro") setProTranscript(transcript);
+      if (changedRole === "con") setConTranscript(transcript);
     };
-    socket.on("transcript_update", onTranscriptUpdate);
+    const onState = ({ transcripts }: { transcripts?: { pro?: string; con?: string } }) => {
+      const pro = transcripts?.pro || "";
+      const con = transcripts?.con || "";
+      setProTranscript(pro);
+      setConTranscript(con);
+      replaceSpeechTranscript(role === "pro" ? pro : con);
+    };
+    socket.on("transcript_update", onTranscript);
+    socket.on("debate_state", onState);
     return () => {
-      socket.off("transcript_update", onTranscriptUpdate);
+      socket.off("transcript_update", onTranscript);
+      socket.off("debate_state", onState);
     };
-  }, [socket, isConnected]);
+  }, [replaceSpeechTranscript, role, socket]);
 
-  // Update local transcript display
   useEffect(() => {
-    if (role === "pro") setProTranscript(transcript);
-    if (role === "con") setConTranscript(transcript);
-  }, [transcript, role]);
+    if (role === "pro") setProTranscript(speech.finalTranscript);
+    else setConTranscript(speech.finalTranscript);
+    if (!socket || !isConnected || !isDebateActive || !speech.finalTranscript) return;
+    if (transcriptSendTimer.current) clearTimeout(transcriptSendTimer.current);
+    transcriptSendTimer.current = setTimeout(() => {
+      socket.emit("transcript_update", { debateId, transcript: speech.finalTranscript });
+    }, 300);
+    return () => {
+      if (transcriptSendTimer.current) clearTimeout(transcriptSendTimer.current);
+    };
+  }, [debateId, isConnected, isDebateActive, role, socket, speech.finalTranscript]);
+
+  const toggleTrack = (kind: "audio" | "video") => {
+    const track = streamRef.current?.getTracks().find((candidate) => candidate.kind === kind);
+    if (!track) return;
+    track.enabled = !track.enabled;
+    if (kind === "audio") {
+      setAudioEnabled(track.enabled);
+      socket?.emit(track.enabled ? "media_ready" : "media_not_ready", { debateId });
+    } else {
+      setVideoEnabled(track.enabled);
+    }
+  };
+
+  const localFinal = role === "pro" ? proTranscript : conTranscript;
+  const opponentFinal = role === "pro" ? conTranscript : proTranscript;
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 w-full">
-      <div className="flex-1">
-        <div className="relative flex flex-col items-center justify-center p-4 w-full h-[400px] md:h-[500px]">
-          {/* Connection Status */}
-          {!isConnected && (
-            <div className="mb-4 p-2 bg-yellow-100 text-yellow-700 rounded border border-yellow-300 w-full text-center">
-              Socket disconnected - trying to reconnect...
+    <div className="grid lg:grid-cols-[minmax(0,1fr)_22rem] bg-slate-950/40">
+      <section className="p-3 sm:p-5">
+        {mediaError && (
+          <div className="mb-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            {mediaError}
+          </div>
+        )}
+        <div className="relative aspect-video min-h-64 overflow-hidden rounded-xl border border-[#303744] bg-[#080a0e]">
+          {remoteStream ? (
+            <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full min-h-64 flex-col items-center justify-center px-6 text-center">
+              <div className="mb-4 rounded-lg border border-[#425a8f] bg-[#172035] p-4">
+                <Video className="h-8 w-8 text-[#829ee3]" />
+              </div>
+              <p className="font-semibold text-white">{stream ? "Waiting for your opponent's camera" : "Camera is off"}</p>
+              <p className="mt-2 max-w-sm text-sm text-slate-400">
+                {stream ? "The secure peer connection starts automatically when both sides are ready." : "Start your camera to enable video, audio, and live transcription."}
+              </p>
+              {!stream && (
+                <button
+                  type="button"
+                  onClick={startMedia}
+                  disabled={startingMedia}
+                  className="mt-5 inline-flex items-center gap-2 rounded-lg border border-[#5d86ed] bg-[#4f73d9] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5a7ee0] disabled:opacity-60"
+                >
+                  {startingMedia ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+                  {startingMedia ? "Starting…" : "Start camera & microphone"}
+                </button>
+              )}
             </div>
           )}
 
-          {mediaError && (
-            <div className="mb-4 p-2 bg-red-100 text-red-700 rounded border border-red-300 w-full text-center">
-              {mediaError}
+          {stream && (
+            <video
+              ref={localVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="absolute bottom-4 right-4 aspect-video w-28 rounded-xl border-2 border-white/30 bg-black object-cover shadow-xl sm:w-40"
+            />
+          )}
+          <div className="absolute left-4 top-4 flex items-center gap-2 rounded-md border border-white/10 bg-black/75 px-3 py-1.5 text-xs text-white">
+            {peerConnected ? <Wifi className="h-3.5 w-3.5 text-emerald-400" /> : <WifiOff className="h-3.5 w-3.5 text-amber-400" />}
+            {peerConnected ? "Peer connected" : isConnected ? "Waiting for peer" : "Reconnecting"}
+          </div>
+          {speechEnabled && (
+            <div className="absolute right-4 top-4 flex items-center gap-2 rounded-md border border-white/10 bg-black/75 px-3 py-1.5 text-xs text-white">
+              <Radio className={`h-3.5 w-3.5 ${speech.isListening ? "animate-pulse text-rose-400" : "text-amber-400"}`} />
+              {speech.isListening ? "Transcribing" : "Speech paused"}
             </div>
           )}
+        </div>
 
-          {/* Speech Recognition Status */}
-          {userInteracted && !speechSupported && (
-            <div className="mb-4 p-2 bg-orange-100 text-orange-700 rounded border border-orange-300 w-full text-center">
-              ⚠️ Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.
-            </div>
-          )}
-
-          {userInteracted && speechError && speechErrorMessage && (
-            <div className="mb-4 p-2 bg-red-100 text-red-700 rounded border border-red-300 w-full text-center">
-              ❌ Speech recognition error: {speechErrorMessage}
-            </div>
-          )}
-
-          {userInteracted && speechSupported && !speechError && isListening && (
-            <div className="mb-4 p-2 bg-green-100 text-green-700 rounded border border-green-300 w-full text-center">
-              🎤 Listening... Speak now and your words will be transcribed
-            </div>
-          )}
-
-          {/* Camera Start Prompt */}
-          {showCameraPrompt && !stream && (
-            <div className="mb-4 p-4 bg-blue-100 text-blue-700 rounded border border-blue-300 w-full text-center">
-              <h3 className="font-medium mb-2">Camera Access Required</h3>
-              <p className="text-sm mb-3">Click to start your camera for the video debate</p>
-              <button
-                onClick={handleStartCamera}
-                disabled={isStartingCamera || !selectedDeviceId}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-              >
-                {isStartingCamera ? "Starting Camera..." : "Start Camera"}
-              </button>
-            </div>
-          )}
-
-          {videoDevices.length > 1 && stream && (
-            <div className="mb-4 w-full max-w-md">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Select Camera:</label>
+        {stream && (
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <button type="button" onClick={() => toggleTrack("audio")} className="media-control">
+              {audioEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+              {audioEnabled ? "Mute" : "Unmute"}
+            </button>
+            <button type="button" onClick={() => toggleTrack("video")} className="media-control">
+              {videoEnabled ? <Camera className="h-4 w-4" /> : <CameraOff className="h-4 w-4" />}
+              {videoEnabled ? "Hide camera" : "Show camera"}
+            </button>
+            {videoDevices.length > 1 && (
               <select
                 value={selectedDeviceId}
-                onChange={(e) => setSelectedDeviceId(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900"
+                onChange={(event) => setSelectedDeviceId(event.target.value)}
+                className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+                aria-label="Camera device"
               >
-                {videoDevices.map((device) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Camera ${device.deviceId.slice(0, 8)}...`}
-                  </option>
+                {videoDevices.map((device, index) => (
+                  <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${index + 1}`}</option>
                 ))}
               </select>
-            </div>
-          )}
-
-          <div className="relative w-full h-full flex items-center justify-center">
-            {remoteStream ? (
-              <video
-                ref={remoteVideoRef}
-                autoPlay
-                playsInline
-                className="rounded border bg-black w-full h-full object-cover"
-                style={{ minHeight: '300px', minWidth: '300px', maxHeight: '100%', maxWidth: '100%' }}
-              />
-            ) : (
-              <div className="rounded border bg-gray-900 w-full h-full flex items-center justify-center text-white">
-                <div className="text-center">
-                  <div className="text-2xl mb-2">👤</div>
-                  <div className="text-lg font-medium">Waiting for opponent...</div>
-                  <div className="text-sm text-gray-400 mt-2">
-                    {connected ? 'Connected - video loading...' :
-                      !isConnected ? 'Socket connecting...' :
-                        !stream ? 'Camera not started' :
-                          'Establishing connection...'}
-                  </div>
-                  <div className="text-xs text-gray-500 mt-4 max-w-xs">
-                    {role === 'pro'
-                      ? 'Share the join code with your opponent to start the video debate'
-                      : 'Waiting for Pro participant to join...'
-                    }
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {stream && (
-              <video
-                ref={localVideoRef}
-                autoPlay
-                muted
-                playsInline
-                className="absolute bottom-4 right-4 rounded border bg-black shadow-lg w-32 h-24 object-cover z-10"
-                style={{ border: '2px solid white' }}
-              />
-            )}
-
-            <div className="absolute top-4 right-4 z-20">
-              <div className={`px-3 py-1 rounded-full text-xs font-medium ${connected && isConnected
-                ? 'bg-green-500/80 text-white'
-                : 'bg-yellow-500/80 text-white'
-                }`}>
-                {connected && isConnected ? 'Connected' :
-                  !isConnected ? 'Socket Connecting...' : 'Connecting...'}
-              </div>
-            </div>
-
-            {/* Speech Recognition Status Indicator */}
-            {userInteracted && speechSupported && (
-              <div className="absolute top-4 left-4 z-20">
-                <div className={`px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${isListening
-                  ? 'bg-red-500/80 text-white animate-pulse'
-                  : 'bg-gray-500/80 text-white'
-                  }`}>
-                  <div className={`w-2 h-2 rounded-full ${isListening ? 'bg-white' : 'bg-gray-300'}`}></div>
-                  {isListening ? 'Listening...' : 'Speech Recognition'}
-                </div>
-              </div>
-            )}
-
-            {process.env.NODE_ENV === 'development' && (
-              <div className="absolute bottom-20 left-4 z-20 bg-black/80 text-white text-xs p-2 rounded">
-                <div>Role: {role}</div>
-                <div>Socket Connected: {isConnected ? 'Yes' : 'No'}</div>
-                <div>Peer Connected: {connected ? 'Yes' : 'No'}</div>
-                <div>Local Stream: {stream ? 'Yes' : 'No'}</div>
-                <div>Remote Stream: {remoteStream ? 'Yes' : 'No'}</div>
-                <div>Peer: {peer ? 'Active' : 'None'}</div>
-                <div>User Interacted: {userInteracted ? 'Yes' : 'No'}</div>
-                <div>Speech Listening: {isListening ? 'Yes' : 'No'}</div>
-                <div>Speech Supported: {speechSupported ? 'Yes' : 'No'}</div>
-              </div>
             )}
           </div>
-        </div>
-      </div>
+        )}
+      </section>
 
-      <div className="w-full lg:w-80 bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Live Transcripts</h3>
-          {userInteracted && speechSupported && (
-            <button
-              onClick={clearTranscript}
-              className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 rounded transition-colors"
-              title="Clear transcript"
-            >
-              Clear
+      <aside className="border-t border-white/10 p-4 lg:border-l lg:border-t-0">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#829ee3]">Live transcript</p>
+            <h3 className="mt-1 font-semibold text-white">Argument capture</h3>
+          </div>
+          <span className={`h-2.5 w-2.5 rounded-full ${speech.isListening ? "animate-pulse bg-rose-400" : "bg-slate-600"}`} />
+        </div>
+
+        {!speech.isSupported && stream && (
+          <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+            Live speech recognition is unavailable in this browser. Use current Chrome or Edge, or submit arguments in chat.
+          </div>
+        )}
+        {speech.hasError && (
+          <div className="mb-4 rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-sm text-rose-100">
+            <p>{speech.errorMessage}</p>
+            <button type="button" onClick={speech.retry} className="mt-2 inline-flex items-center gap-1 font-semibold text-white hover:underline">
+              <RefreshCw className="h-3.5 w-3.5" /> Retry speech recognition
             </button>
-          )}
-        </div>
+          </div>
+        )}
+        {!isDebateActive && stream && (
+          <div className="mb-4 rounded-lg border border-[#425a8f] bg-[#172035] p-3 text-sm text-[#c3cff0]">
+            Transcription starts with the debate timer and stops automatically when time expires.
+          </div>
+        )}
 
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-2">
-            <div className={`w-3 h-3 rounded-full ${role === 'pro' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-            <span className="text-sm font-medium text-gray-700">You ({role.toUpperCase()})</span>
-            {userInteracted && speechSupported && (
-              <div className={`ml-auto text-xs px-2 py-1 rounded flex items-center gap-1 ${isListening
-                ? 'bg-green-100 text-green-700 animate-pulse'
-                : 'bg-gray-100 text-gray-500'
-                }`}>
-                <div className={`w-2 h-2 rounded-full ${isListening ? 'bg-green-600' : 'bg-gray-400'}`}></div>
-                {isListening ? 'Listening' : 'Ready'}
-              </div>
-            )}
-          </div>
-          <div className="bg-gray-50 rounded-lg p-3 min-h-[100px] max-h-[200px] overflow-y-auto">
-            <div className="text-sm text-gray-800">
-              {transcript ? (
-                <div>
-                  {/* Show final transcript in regular text */}
-                  <span>{finalTranscript}</span>
-                  {/* Show interim transcript in italics with visual indicator */}
-                  {interimTranscript && (
-                    <span className="italic text-blue-600 font-medium"> {interimTranscript}...</span>
-                  )}
-                </div>
-              ) : (
-                <span className="text-gray-400 italic">
-                  {!userInteracted
-                    ? "🎥 Start camera to enable speech recognition..."
-                    : !speechSupported
-                      ? "❌ Speech recognition not supported in this browser"
-                      : speechError && speechErrorMessage
-                        ? `❌ ${speechErrorMessage}`
-                        : isListening
-                          ? "🎤 Listening... Start speaking"
-                          : "⏸️ Initializing speech recognition..."
-                  }
-                </span>
-              )}
-            </div>
-          </div>
+        <div className="space-y-3">
+          <TranscriptCard
+            label={`You · ${role.toUpperCase()}`}
+            color={role === "pro" ? "emerald" : "rose"}
+            text={localFinal}
+            interim={speech.interimTranscript}
+            empty={isDebateActive ? "Listening for your argument…" : "Your argument will appear here."}
+          />
+          <TranscriptCard
+            label={`Opponent · ${role === "pro" ? "CON" : "PRO"}`}
+            color={role === "pro" ? "rose" : "emerald"}
+            text={opponentFinal}
+            empty="Waiting for the opponent's argument…"
+          />
         </div>
+      </aside>
+    </div>
+  );
+}
 
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <div className={`w-3 h-3 rounded-full ${role === 'pro' ? 'bg-red-500' : 'bg-green-500'}`}></div>
-            <span className="text-sm font-medium text-gray-700">Opponent ({role === 'pro' ? 'CON' : 'PRO'})</span>
-          </div>
-          <div className="bg-gray-50 rounded-lg p-3 min-h-[100px] max-h-[200px] overflow-y-auto">
-            <div className="text-sm text-gray-800">
-              {role === "pro" ? (
-                conTranscript ? (
-                  <span>{conTranscript}</span>
-                ) : (
-                  <span className="text-gray-400 italic">Waiting for opponent&apos;s transcript...</span>
-                )
-              ) : (
-                proTranscript ? (
-                  <span>{proTranscript}</span>
-                ) : (
-                  <span className="text-gray-400 italic">Waiting for opponent&apos;s transcript...</span>
-                )
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>Socket:</span>
-            <span className={`font-medium ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
-            <span>Peer:</span>
-            <span className={`font-medium ${connected ? 'text-green-600' : 'text-yellow-600'}`}>
-              {connected ? 'Connected' : 'Connecting...'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
-            <span>Speech:</span>
-            <span className={`font-medium ${!userInteracted ? 'text-gray-400' :
-              !speechSupported ? 'text-red-600' :
-                speechError ? 'text-red-600' :
-                  isListening ? 'text-green-600' : 'text-yellow-600'
-              }`}>
-              {!userInteracted ? 'Disabled' :
-                !speechSupported ? 'Not Supported' :
-                  speechError ? 'Error' :
-                    isListening ? 'Listening' : 'Ready'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-xs text-gray-500 mt-1">
-            <span>Role:</span>
-            <span className="font-medium text-gray-700">{role.toUpperCase()}</span>
-          </div>
-        </div>
+function TranscriptCard({
+  label,
+  color,
+  text,
+  interim,
+  empty,
+}: {
+  label: string;
+  color: "emerald" | "rose";
+  text: string;
+  interim?: string;
+  empty: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-300">
+        <span className={`h-2 w-2 rounded-full ${color === "emerald" ? "bg-emerald-400" : "bg-rose-400"}`} />
+        {label}
+      </div>
+      <div className="max-h-40 min-h-24 overflow-y-auto text-sm leading-6 text-slate-200">
+        {text || interim ? (
+          <>
+            {text}
+            {interim && <span className="text-[#8aa7ed]"> {interim}</span>}
+          </>
+        ) : <span className="text-slate-500">{empty}</span>}
       </div>
     </div>
   );

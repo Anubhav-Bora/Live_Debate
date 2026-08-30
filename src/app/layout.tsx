@@ -1,13 +1,10 @@
 import { Providers } from "@/app/provider";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
-
 export const metadata: Metadata = {
-  title: "Live AI Debate Arena",
-  description: "Real-time debates with AI feedback",
+  title: { default: "DebateArena", template: "%s · DebateArena" },
+  description: "Live video debates with reliable transcription, structured AI judging, and performance rankings.",
 };
 
 export default function RootLayout({
@@ -17,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className="antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

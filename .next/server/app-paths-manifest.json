@@ -1,6 +1,14 @@
 {
+  "/api/debates/route": "app/api/debates/route.js",
+  "/api/debates/[id]/route": "app/api/debates/[id]/route.js",
   "/api/debates/[id]/messages/route": "app/api/debates/[id]/messages/route.js",
+  "/api/leaderboard/route": "app/api/leaderboard/route.js",
+  "/api/auth/sign-out/route": "app/api/auth/sign-out/route.js",
+  "/debates/page": "app/debates/page.js",
+  "/sign-up/[[...sign-up]]/page": "app/sign-up/[[...sign-up]]/page.js",
   "/page": "app/page.js",
   "/debates/create/page": "app/debates/create/page.js",
-  "/debates/[id]/page": "app/debates/[id]/page.js"
+  "/debates/[id]/page": "app/debates/[id]/page.js",
+  "/profile/[userId]/page": "app/profile/[userId]/page.js",
+  "/leaderboard/page": "app/leaderboard/page.js"
 }

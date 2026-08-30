@@ -1,402 +1,180 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { timingSafeEqual } from "crypto";
+import type { Prisma } from "@prisma/client";
+import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureUserExists } from "@/lib/userSync";
+import { allowRequest } from "@/lib/rateLimit";
 
-// Define types
-interface ScoreData {
-  logic: number;
-  clarity: number;
-  persuasiveness: number;
-  tone: number;
+function secureCodeMatch(value: string, expected: string) {
+  const provided = Buffer.from(value.trim().toUpperCase());
+  const stored = Buffer.from(expected);
+  return provided.length === stored.length && timingSafeEqual(provided, stored);
 }
 
-interface AIScores {
-  pro?: ScoreData;
-  con?: ScoreData;
+async function currentDatabaseUser() {
+  return { user: await getCurrentUser() };
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+const publicSelect = {
+  id: true,
+  topic: true,
+  status: true,
+  analysisStatus: true,
+  winner: true,
+  duration: true,
+  isPublic: true,
+  proDisplayName: true,
+  startTime: true,
+  endTime: true,
+  createdAt: true,
+  aiFeedback: true,
+  proTranscript: true,
+  conTranscript: true,
+  joinCodeCon: true,
+  creatorId: true,
+  proUserId: true,
+  conUserId: true,
+  proUser: { select: { id: true, username: true } },
+  conUser: { select: { id: true, username: true } },
+} as const;
+
+type SelectedDebate = Prisma.DebateGetPayload<{ select: typeof publicSelect }>;
+
+function safeDebateResponse(debate: SelectedDebate, userId: string | null, includeJoinCode = false) {
+  const viewerRole = userId === debate.proUserId ? "pro" : userId === debate.conUserId ? "con" : "viewer";
+  const participant = viewerRole !== "viewer";
+  return {
+    id: debate.id,
+    topic: debate.topic,
+    status: debate.status,
+    analysisStatus: debate.analysisStatus,
+    winner: debate.winner,
+    duration: debate.duration,
+    isPublic: debate.isPublic,
+    proDisplayName: debate.proDisplayName,
+    startTime: debate.startTime,
+    endTime: debate.endTime,
+    createdAt: debate.createdAt,
+    aiFeedback: debate.aiFeedback,
+    proTranscript: participant || debate.status === "completed" ? debate.proTranscript : undefined,
+    conTranscript: participant || debate.status === "completed" ? debate.conTranscript : undefined,
+    proUser: debate.proUser,
+    conUser: debate.conUser,
+    viewerRole,
+    canDelete: userId === debate.creatorId,
+    ...(includeJoinCode ? { joinCodeCon: debate.joinCodeCon } : {}),
+  };
+}
+
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-
-    const debate = await prisma.debate.findUnique({
-      where: { id },
-      include: {
-        proUser: true,
-        conUser: true,
-        creator: true,
-        messages: {
-          orderBy: { createdAt: "asc" },
-          include: { sender: true },
-        },
-      },
-    });
-
-    if (!debate) {
+    const { user } = await currentDatabaseUser();
+    const debate = await prisma.debate.findUnique({ where: { id }, select: publicSelect });
+    if (!debate) return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+    const isParticipant = Boolean(user && [debate.creatorId, debate.proUserId, debate.conUserId].includes(user.id));
+    if (!debate.isPublic && !isParticipant) {
       return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     }
 
-    return NextResponse.json(debate);
+    const canSeePrivateData = Boolean(user && debate.creatorId === user.id);
+    return NextResponse.json(safeDebateResponse(debate, user?.id || null, canSeePrivateData), {
+      headers: { "Cache-Control": "no-store" },
+    });
   } catch (error) {
-    console.error("Error fetching debate:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("Could not fetch debate:", error);
+    return NextResponse.json({ error: "Failed to fetch debate" }, { status: 500 });
   }
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { userId, action, joinCode } = await request.json();
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!allowRequest(`join:${user.id}:${id}`, 8, 60_000)) {
+      return NextResponse.json({ error: "Too many join attempts. Please wait a minute." }, { status: 429 });
     }
 
-    // Ensure user exists, create if not found
-    let user;
-    try {
-      user = await ensureUserExists(userId);
-    } catch (syncError) {
-      console.error("Error syncing user from Clerk:", syncError);
-      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
+    const body = (await request.json()) as { action?: unknown; joinCode?: unknown };
+    if (body.action !== "join_con") {
+      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
-
+    const joinCode = typeof body.joinCode === "string" ? body.joinCode : "";
     const debate = await prisma.debate.findUnique({ where: { id } });
-
-    if (!debate) {
-      return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+    if (!debate) return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+    if (debate.status !== "waiting" || debate.conUserId) {
+      return NextResponse.json({ error: "The Con position is no longer available." }, { status: 409 });
+    }
+    if (debate.proUserId === user.id) {
+      return NextResponse.json({ error: "The Pro participant cannot also join as Con." }, { status: 400 });
+    }
+    if (!secureCodeMatch(joinCode, debate.joinCodeCon)) {
+      return NextResponse.json({ error: "Invalid join code" }, { status: 400 });
     }
 
-    if (action === "join_con") {
-      if (debate.status !== "waiting") {
-        return NextResponse.json(
-          { error: "Debate not open for joining" },
-          { status: 400 }
-        );
-      }
-
-      if ([debate.proUserId, debate.conUserId].includes(user.id)) {
-        return NextResponse.json(
-          { error: "Already a participant" },
-          { status: 400 }
-        );
-      }
-
-      if (!joinCode || joinCode.trim().toUpperCase() !== debate.joinCodeCon) {
-        return NextResponse.json(
-          { error: "Invalid join code" },
-          { status: 400 }
-        );
-      }
-
-      if (debate.conUserId) {
-        return NextResponse.json(
-          { error: "Con position already taken" },
-          { status: 400 }
-        );
-      }
-
-      const updatedDebate = await prisma.debate.update({
-        where: { id },
-        data: {
-          conUserId: user.id,
-          status: debate.proUserId ? "in-progress" : "waiting",
-        },
-        include: { proUser: true, conUser: true, creator: true },
-      });
-
-      return NextResponse.json(updatedDebate);
+    const claim = await prisma.debate.updateMany({
+      where: { id, status: "waiting", conUserId: null },
+      data: { conUserId: user.id },
+    });
+    if (claim.count !== 1) {
+      return NextResponse.json({ error: "Another participant already claimed the Con position." }, { status: 409 });
     }
-
-    if (action === "end") {
-      const allowedUserIds = [debate.proUserId, debate.conUserId, debate.creatorId];
-      if (!allowedUserIds.includes(user.id)) {
-        return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-      }
-
-      const messageCount = await prisma.message.count({
-        where: { debateId: debate.id },
-      });
-
-      // If not enough messages, mark as not happened
-      if (messageCount < 4) {
-        const updatedDebate = await prisma.debate.update({
-          where: { id },
-          data: {
-            status: "completed",
-            aiFeedback: { message: "Debate did not happen due to insufficient participation." },
-          },
-          include: { proUser: true, conUser: true, creator: true },
-        });
-        return NextResponse.json({
-          ...updatedDebate,
-          aiFeedback: updatedDebate.aiFeedback,
-        });
-      }
-
-      const updatedDebate = await prisma.debate.update({
-        where: { id },
-        data: { status: "completed" },
-        include: {
-          proUser: true,
-          conUser: true,
-          creator: true,
-          messages: {
-            orderBy: { createdAt: "asc" },
-            include: { sender: true },
-          },
-        },
-      });
-
-      if (updatedDebate.proUser && updatedDebate.conUser) {
-        const existingScores = await prisma.score.findMany({
-          where: {
-            debateId: updatedDebate.id,
-            userId: { in: [updatedDebate.proUser.id, updatedDebate.conUser.id] },
-          },
-        });
-
-        const scoredUserIds = existingScores.map((s) => s.userId);
-        const transcript = updatedDebate.messages
-          .map((m) => `${m.sender.username} (${m.role}): ${m.content}`)
-          .join("\n");
-
-        const prompt = `Analyze this debate transcript and score both participants (pro and con) on four criteria: logic, clarity, persuasiveness, and tone.\nProvide only the scores as numbers in this exact format:\nPro: [logic], [clarity], [persuasiveness], [tone]\nCon: [logic], [clarity], [persuasiveness], [tone]\n\nDebate Topic: ${updatedDebate.topic}\nTranscript:\n${transcript}`;
-
-        let aiScores: AIScores | null = null;
-
-        try {
-          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "openai/gpt-4",
-              messages: [{ role: "user", content: prompt }],
-              temperature: 0.7,
-              max_tokens: 1500,
-            }),
-          });
-
-          const data = await response.json();
-          const analysis = data.choices[0]?.message?.content;
-
-          if (analysis) {
-            const proMatch = analysis.match(/Pro:\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)/);
-            const conMatch = analysis.match(/Con:\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)/);
-
-            if (proMatch && conMatch) {
-              aiScores = {
-                pro: {
-                  logic: parseInt(proMatch[1]),
-                  clarity: parseInt(proMatch[2]),
-                  persuasiveness: parseInt(proMatch[3]),
-                  tone: parseInt(proMatch[4]),
-                },
-                con: {
-                  logic: parseInt(conMatch[1]),
-                  clarity: parseInt(conMatch[2]),
-                  persuasiveness: parseInt(conMatch[3]),
-                  tone: parseInt(conMatch[4]),
-                }
-              };
-            }
-          }
-        } catch (error) {
-          console.error("OpenRouter API error:", error);
-        }
-
-        const proScore = aiScores?.pro || {
-          logic: 7,
-          clarity: 8,
-          persuasiveness: 7,
-          tone: 8,
-        };
-
-        const conScore = aiScores?.con || {
-          logic: 7,
-          clarity: 8,
-          persuasiveness: 7,
-          tone: 8,
-        };
-
-        if (!scoredUserIds.includes(updatedDebate.proUser.id)) {
-          await prisma.score.create({
-            data: {
-              ...proScore,
-              userId: updatedDebate.proUser.id,
-              debateId: updatedDebate.id,
-            },
-          });
-        }
-
-        if (!scoredUserIds.includes(updatedDebate.conUser.id)) {
-          await prisma.score.create({
-            data: {
-              ...conScore,
-              userId: updatedDebate.conUser.id,
-              debateId: updatedDebate.id,
-            },
-          });
-        }
-
-        // Call feedback API and store in aiFeedback
-        let aiFeedback = null;
-        try {
-          const feedbackRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/analyze`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ transcript, debateTopic: updatedDebate.topic }),
-          });
-          const feedbackData = await feedbackRes.json();
-          aiFeedback = feedbackData.analysis || null;
-        } catch (err) {
-          console.error("AI feedback error:", err);
-        }
-
-        const debateWithFeedback = await prisma.debate.update({
-          where: { id: updatedDebate.id },
-          data: { aiFeedback },
-          include: { proUser: true, conUser: true, creator: true },
-        });
-
-        return NextResponse.json({
-          ...debateWithFeedback,
-          aiFeedback: debateWithFeedback.aiFeedback,
-        });
-      }
-
-      // If for some reason proUser or conUser is missing
-      const debateWithAbsent = await prisma.debate.update({
-        where: { id },
-        data: {
-          aiFeedback: { message: "Debate did not happen due to missing participant." },
-        },
-        include: { proUser: true, conUser: true, creator: true },
-      });
-      return NextResponse.json({
-        ...debateWithAbsent,
-        aiFeedback: debateWithAbsent.aiFeedback,
-      });
-    }
-
-    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+    const updated = await prisma.debate.findUnique({ where: { id }, select: publicSelect });
+    if (!updated) return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+    return NextResponse.json(safeDebateResponse(updated, user.id));
   } catch (error) {
-    console.error("POST error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("Could not join debate:", error);
+    return NextResponse.json({ error: "Could not join the debate." }, { status: 500 });
   }
 }
 
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { userId } = await request.json();
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const debate = await prisma.debate.findUnique({ where: { id }, select: { creatorId: true, status: true } });
+    if (!debate || debate.creatorId !== user.id) {
+      return NextResponse.json({ error: "Not authorized to delete this debate." }, { status: 403 });
     }
-
-    // Ensure user exists, create if not found
-    let user;
-    try {
-      user = await ensureUserExists(userId);
-    } catch (syncError) {
-      console.error("Error syncing user from Clerk:", syncError);
-      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
+    if (debate.status === "in-progress") {
+      return NextResponse.json({ error: "An active debate cannot be deleted." }, { status: 409 });
     }
-
-    const debate = await prisma.debate.findUnique({
-      where: { id },
-      include: { proUser: true, conUser: true, creator: true },
-    });
-
-    if (!debate || debate.proUserId !== user.id) {
-      return NextResponse.json(
-        { error: "Not authorized to delete" },
-        { status: 403 }
-      );
-    }
-
     await prisma.$transaction([
       prisma.message.deleteMany({ where: { debateId: id } }),
       prisma.score.deleteMany({ where: { debateId: id } }),
       prisma.vote.deleteMany({ where: { debateId: id } }),
       prisma.debate.delete({ where: { id } }),
     ]);
-
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("DELETE error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("Could not delete debate:", error);
+    return NextResponse.json({ error: "Could not delete the debate." }, { status: 500 });
   }
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { userId, action } = await request.json();
-
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Ensure user exists, create if not found
-    let user;
-    try {
-      user = await ensureUserExists(userId);
-    } catch (syncError) {
-      console.error("Error syncing user from Clerk:", syncError);
-      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
-    }
-
-    const debate = await prisma.debate.findUnique({
-      where: { id },
-      include: { proUser: true, conUser: true, creator: true },
-    });
-
-    if (!debate || debate.proUserId !== user.id) {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const body = (await request.json()) as { action?: unknown };
+    const debate = await prisma.debate.findUnique({ where: { id } });
+    if (!debate || debate.creatorId !== user.id) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
-
-    if (action === "remove_con" && debate.conUser) {
-      const updatedDebate = await prisma.debate.update({
-        where: { id },
-        data: { conUserId: null, status: "waiting" },
-        include: { proUser: true, conUser: true, creator: true },
-      });
-
-      return NextResponse.json(updatedDebate);
+    if (body.action !== "remove_con" || debate.status !== "waiting" || !debate.conUserId) {
+      return NextResponse.json({ error: "The participant cannot be removed now." }, { status: 409 });
     }
-
-    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+    const updated = await prisma.debate.update({
+      where: { id },
+      data: { conUserId: null },
+      select: publicSelect,
+    });
+    return NextResponse.json(safeDebateResponse(updated, user.id, true));
   } catch (error) {
-    console.error("PATCH error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("Could not update debate:", error);
+    return NextResponse.json({ error: "Could not update the debate." }, { status: 500 });
   }
 }

@@ -1,3 +1,15 @@
-node_modules
+node_modules/
+.next/
+out/
+coverage/
+
+# Local credentials and machine-specific configuration
 .env
 .env.local
+.env.*.local
+.env.ai.local
+
+# Logs and editor files
+*.log
+*.tsbuildinfo
+.DS_Store

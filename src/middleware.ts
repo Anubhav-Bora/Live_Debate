@@ -1,44 +1,37 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
-const isPublicRoute = createRouteMatcher([
-  "/",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-]);
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-export default clerkMiddleware(async (auth, req) => {
-  // Handle CORS preflight requests first
-  if (req.method === 'OPTIONS') {
-    return new NextResponse(null, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, Clerk-Auth',
+export function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith("/api/") && MUTATING_METHODS.has(request.method)) {
+    const origin = request.headers.get("origin");
+    const fetchSite = request.headers.get("sec-fetch-site");
+    const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+    const requestHost = forwardedHost || request.headers.get("host");
+    const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+    const requestProtocol = forwardedProtocol || request.nextUrl.protocol.replace(":", "");
+    let originMatches = true;
+    if (origin) {
+      try {
+        const parsedOrigin = new URL(origin);
+        originMatches = parsedOrigin.host === requestHost && parsedOrigin.protocol === `${requestProtocol}:`;
+      } catch {
+        originMatches = false;
       }
-    });
+    }
+    if (!originMatches || fetchSite === "cross-site") {
+      return NextResponse.json({ error: "Cross-site request blocked." }, { status: 403 });
+    }
   }
 
-  // Process Clerk auth
-  const authResult = await auth();
-  const userId = authResult?.userId;
-
-  // Instead of syncing in middleware, add the userId to headers
-  // and handle user sync in your API routes or components
   const response = NextResponse.next();
-  
-  if (userId && !isPublicRoute(req)) {
-    response.headers.set('x-user-id', userId);
-  }
-
-  // Add CORS headers to all responses
-  response.headers.set('Access-Control-Allow-Origin', '*');
-  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, Clerk-Auth');
-
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()");
+  response.headers.set("X-Frame-Options", "DENY");
   return response;
-});
+}
 
 export const config = {
-  matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };

@@ -1,80 +1,37 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-import { getAuth } from "@clerk/nextjs/server";
-import { NextApiRequest } from "next";
-import { ensureUserExists } from "@/lib/userSync";
+import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { allowRequest } from "@/lib/rateLimit";
 
-const prisma = new PrismaClient();
-
-interface VoteRequestBody {
-  debateId: string;
-  winner: "pro" | "con";
-}
-
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    // Properly type the request for getAuth
-    const authRequest = {
-      headers: Object.fromEntries(req.headers.entries())
-    } as unknown as NextApiRequest;
-    
-    const { userId } = getAuth(authRequest);
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!allowRequest(`vote:${user.id}`, 20, 60_000)) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
-
-    const { debateId, winner } = await req.json() as VoteRequestBody;
-    if (!debateId || !winner) {
-      return NextResponse.json(
-        { error: "Debate ID and winner are required" },
-        { status: 400 }
-      );
+    const body = (await request.json()) as { debateId?: unknown; winner?: unknown };
+    const debateId = typeof body.debateId === "string" ? body.debateId : "";
+    if (!debateId || (body.winner !== "pro" && body.winner !== "con")) {
+      return NextResponse.json({ error: "A valid debate and winner are required." }, { status: 400 });
     }
-
-    // Ensure user exists, create if not found
-    let user;
-    try {
-      user = await ensureUserExists(userId);
-    } catch (syncError) {
-      console.error("Error syncing user from Clerk:", syncError);
-      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
+    const debate = await prisma.debate.findUnique({ where: { id: debateId }, select: { status: true } });
+    if (!debate) return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+    if (debate.status !== "completed") {
+      return NextResponse.json({ error: "Voting opens after the debate ends." }, { status: 409 });
     }
-
-    // Check if user already voted
-    const existingVote = await prisma.vote.findFirst({
-      where: { userId: user.id, debateId },
-    });
-
-    if (existingVote) {
-      return NextResponse.json(
-        { error: "You have already voted on this debate" },
-        { status: 400 }
-      );
-    }
-
-    // Create new vote
-    await prisma.vote.create({
-      data: {
-        userId: user.id,
-        debateId,
-        winner,
-      },
-    });
-
-    // Get updated vote counts
-    const proVotes = await prisma.vote.count({
-      where: { debateId, winner: "pro" },
-    });
-    const conVotes = await prisma.vote.count({
-      where: { debateId, winner: "con" },
-    });
-
+    await prisma.vote.create({ data: { userId: user.id, debateId, winner: body.winner } });
+    const [proVotes, conVotes] = await prisma.$transaction([
+      prisma.vote.count({ where: { debateId, winner: "pro" } }),
+      prisma.vote.count({ where: { debateId, winner: "con" } }),
+    ]);
     return NextResponse.json({ proVotes, conVotes });
   } catch (error) {
-    console.error("Error submitting vote:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    const known = error as { code?: string };
+    if (known.code === "P2002") {
+      return NextResponse.json({ error: "You have already voted on this debate." }, { status: 409 });
+    }
+    console.error("Could not submit vote:", error);
+    return NextResponse.json({ error: "Could not submit vote" }, { status: 500 });
   }
 }

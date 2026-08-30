@@ -1,78 +1,79 @@
-import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
-import { ensureUserExists } from "@/lib/userSync";
+import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { allowRequest } from "@/lib/rateLimit";
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+async function canAccessDebate(debateId: string, user: { id: string } | null) {
+  const debate = await prisma.debate.findUnique({
+    where: { id: debateId },
+    select: { isPublic: true, proUserId: true, conUserId: true, status: true },
+  });
+  if (!debate) return { debate: null, user: null };
+  const participant = Boolean(user && [debate.proUserId, debate.conUserId].includes(user.id));
+  return { debate: debate.isPublic || participant ? debate : null, user };
+}
+
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    
+    const user = await getCurrentUser();
+    const { debate } = await canAccessDebate(id, user);
+    if (!debate) return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     const messages = await prisma.message.findMany({
       where: { debateId: id },
-      include: { sender: true },
-      orderBy: { createdAt: 'asc' }
+      select: {
+        id: true,
+        content: true,
+        role: true,
+        createdAt: true,
+        sender: { select: { id: true, username: true } },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 500,
     });
-
-    return NextResponse.json(messages);
+    return NextResponse.json(messages, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    console.error('Error fetching messages:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch messages', details: error instanceof Error ? error.message : error },
-      { status: 500 }
-    );
+    console.error("Could not fetch messages:", error);
+    return NextResponse.json({ error: "Failed to fetch messages" }, { status: 500 });
   }
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const { userId, content, role } = await request.json();
-    
-    if (!userId || !content || !role) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!allowRequest(`message:${user.id}`, 30, 60_000)) {
+      return NextResponse.json({ error: "You are sending messages too quickly." }, { status: 429 });
     }
-
-    // Ensure user exists, create if not found
-    let user;
-    try {
-      user = await ensureUserExists(userId);
-    } catch (syncError) {
-      console.error("Error syncing user from Clerk:", syncError);
-      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
+    const body = (await request.json()) as { content?: unknown };
+    const content = typeof body.content === "string" ? body.content.trim() : "";
+    if (!content || content.length > 2_000) {
+      return NextResponse.json({ error: "Message must be between 1 and 2,000 characters." }, { status: 400 });
     }
-
-    try {
-      const newMessage = await prisma.message.create({
-        data: {
-          content,
-          role,
-          debateId: id,
-          senderId: user.id, // Use the internal CUID
-        },
-        include: { sender: true }
-      });
-
-      return NextResponse.json(newMessage);
-    } catch (dbError) {
-      console.error('DB error creating message:', dbError);
-      return NextResponse.json(
-        { error: 'Failed to create message', details: dbError instanceof Error ? dbError.message : dbError },
-        { status: 500 }
-      );
+    const debate = await prisma.debate.findUnique({
+      where: { id },
+      select: { status: true, proUserId: true, conUserId: true },
+    });
+    if (!debate) return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+    const role = debate.proUserId === user.id ? "pro" : debate.conUserId === user.id ? "con" : null;
+    if (!role) return NextResponse.json({ error: "Only participants can send messages." }, { status: 403 });
+    if (debate.status !== "in-progress") {
+      return NextResponse.json({ error: "Messages can only be sent during an active debate." }, { status: 409 });
     }
+    const message = await prisma.message.create({
+      data: { content, role, debateId: id, senderId: user.id },
+      select: {
+        id: true,
+        content: true,
+        role: true,
+        createdAt: true,
+        sender: { select: { id: true, username: true } },
+      },
+    });
+    return NextResponse.json(message, { status: 201 });
   } catch (error) {
-    console.error('Error creating message:', error);
-    return NextResponse.json(
-      { error: 'Failed to create message', details: error instanceof Error ? error.message : error },
-      { status: 500 }
-    );
+    console.error("Could not create message:", error);
+    return NextResponse.json({ error: "Failed to create message" }, { status: 500 });
   }
 }

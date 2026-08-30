@@ -1,446 +1,125 @@
-# 🎤 Live AI Debate Arena
+# DebateArena
 
-A real-time debate platform with AI-powered feedback, live video streaming, and speech-to-text transcription. Built with Next.js, Socket.IO, WebRTC, and OpenAI.
+DebateArena is a real-time video debate app with browser speech-to-text, persisted transcripts, Gemini scoring, winner selection, chat, profiles, and a live leaderboard.
 
-## 🌟 Features
+## How the debate flow works
 
-- **Real-time Video Debates**: WebRTC peer-to-peer video/audio streaming
-- **Live Speech Transcription**: Browser-based speech-to-text for both participants
-- **AI-Powered Feedback**: GPT-4 analysis of debate performance with detailed scoring
-- **Global Leaderboard**: Rankings based on debate scores and performance
-- **User Authentication**: Secure authentication via Clerk
-- **Real-time Messaging**: Socket.IO for live chat and updates
-- **Responsive UI**: Beautiful animated interface with Framer Motion
+1. An authenticated user creates a public or private debate and becomes the Pro participant.
+2. A second authenticated user joins as Con with the private join code.
+3. Each participant clicks **Start camera**. The browser asks for camera and microphone access only after that user gesture.
+4. When both participants are media-ready, Pro starts the debate.
+5. WebRTC carries peer-to-peer audio/video. Socket.IO carries authenticated signaling, chat, presence, timer state, and transcript snapshots.
+6. The browser Web Speech API produces separate Pro and Con transcripts. The server continuously persists the latest complete snapshot for recovery.
+7. At timeout, or when Pro ends the debate, the server flushes transcripts and marks analysis as in progress.
+8. Gemini returns schema-constrained feedback. The server validates and clamps all scores, derives the winner from the four category averages, then saves feedback, winner, and both score records in one database transaction.
+9. Results are broadcast to the room and the leaderboard refreshes immediately. Failed AI analysis can be retried from the results screen without creating duplicate scores.
 
-## 🚀 Tech Stack
+## Stack
 
-### Frontend
-- **Next.js 15** - React framework with App Router
-- **TypeScript** - Type-safe development
-- **Tailwind CSS** - Utility-first styling
-- **Framer Motion** - Smooth animations
-- **Radix UI** - Accessible component primitives
+- Next.js 15, React 19, TypeScript, Tailwind CSS
+- Custom Node server with Socket.IO
+- First-party email/password authentication with database-backed sessions
+- Prisma with PostgreSQL
+- WebRTC through `simple-peer`
+- Browser Web Speech API
+- Google Gemini structured output
 
-### Backend
-- **Node.js** - Custom server with Next.js
-- **Socket.IO** - Real-time bidirectional communication
-- **Prisma** - Type-safe database ORM
-- **PostgreSQL** - Database (hosted on Neon)
+No Docker setup is required.
 
-### Real-time Features
-- **SimplePeer** - WebRTC wrapper for video/audio
-- **Web Speech API** - Browser speech recognition
-- **Socket.IO** - Live updates and signaling
+## Local setup
 
-### AI & Authentication
-- **OpenRouter API** - GPT-4 for debate analysis
-- **Clerk** - User authentication and management
+Requirements: Node.js 18.18 or newer, npm, a PostgreSQL database, and a Gemini API key.
 
-## 📋 Prerequisites
-
-- Node.js 18+ 
-- npm or yarn
-- PostgreSQL database (or Neon account)
-- Clerk account (for authentication)
-- OpenRouter API key (for AI feedback)
-
-## 🛠️ Installation
-
-1. **Clone the repository**
-```bash
-git clone <repository-url>
-cd live-ai-debate-arena
-```
-
-2. **Install dependencies**
 ```bash
 npm install
-```
-
-3. **Set up environment variables**
-
-Create `.env` file:
-```env
-DATABASE_URL=postgresql://user:password@host/database
-```
-
-Create `.env.local` file:
-```env
-# Clerk Authentication
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
-CLERK_SECRET_KEY=your_clerk_secret_key
-NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
-NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/
-
-# Site Configuration
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
-
-# OpenRouter API (for AI feedback)
-OPENROUTER_API_KEY=your_openrouter_api_key
-```
-
-4. **Set up the database**
-```bash
-npx prisma generate
-npx prisma migrate deploy
-```
-
-5. **Run the development server**
-```bash
+copy .env.example .env.local
+npm run db:generate
+npm run db:migrate
 npm run dev
 ```
 
-The app will be available at `http://localhost:3000`
+Open `http://localhost:3000`.
 
-## 🎯 Project Flow
+Use `cp .env.example .env.local` instead of `copy` on macOS or Linux. Do not run `next dev` directly: `npm run dev` starts the custom server required for Socket.IO.
 
-### 1. Landing Page (`/`)
-- Users land on an animated homepage
-- Options to sign in/up or browse as guest
-- Quick join feature with debate ID
-- Call-to-action buttons for creating or browsing debates
+## Environment variables
 
-### 2. Authentication
-- Powered by Clerk
-- Sign up/Sign in flows at `/sign-up` and `/sign-in`
-- User data synced to database via API
+```env
+DATABASE_URL=postgresql://user:password@host/database
 
-### 3. Create Debate (`/debates/create`)
-**Flow:**
-1. User enters debate topic
-2. Sets duration (minutes:seconds, minimum 1 minute)
-3. Chooses visibility (public/private)
-4. System generates:
-   - **Debate ID** (for spectators to view)
-   - **Con Join Code** (secret code for opponent)
-5. User automatically joins as **Pro** participant
-6. Redirected to debate room
-
-### 4. Join Debate
-**Two ways to join:**
-
-**As Participant (Con):**
-- Enter the secret Con Join Code
-- Joins as the opposing participant
-
-**As Spectator:**
-- Use the Debate ID
-- Can watch but not participate in video
-
-### 5. Debate Room (`/debates/[id]`)
-
-**Pre-Debate:**
-- Pro user sees "Start Camera" button
-- Both participants must start their cameras
-- Pro user can start the debate when ready
-- Real-time status updates via Socket.IO
-
-**During Debate:**
-- **Video Streaming**: WebRTC peer-to-peer connection
-  - Local video (small, bottom-right)
-  - Remote video (main display)
-  - Connection status indicators
-
-- **Speech Recognition**: 
-  - Automatic speech-to-text transcription
-  - Shows interim results (blue text) in real-time
-  - Final transcript saved continuously
-  - Separate transcripts for Pro and Con
-
-- **Live Chat**:
-  - Text messaging between participants
-  - Messages stored in database
-  - Real-time delivery via Socket.IO
-
-- **Timer**:
-  - Countdown display
-  - Auto-ends debate when time expires
-  - Can be started only by Pro user
-
-**Technical Flow:**
-```
-User clicks "Start Camera"
-  ↓
-Browser requests camera/microphone permissions
-  ↓
-MediaStream created
-  ↓
-Speech recognition starts automatically
-  ↓
-Socket.IO connects to debate room
-  ↓
-WebRTC peer connection established
-  ↓
-Video/audio streams exchanged
-  ↓
-Transcripts sent via Socket.IO
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+GEMINI_API_KEY=replace_me
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
-### 6. Debate End & AI Analysis
+Optional production WebRTC relay variables:
 
-**When debate ends:**
-1. Timer reaches zero OR Pro user manually ends
-2. Socket.IO emits `debate_ended` event
-3. Server collects:
-   - All chat messages
-   - Speech transcripts (Pro & Con)
-   - Debate metadata
-
-4. **AI Analysis** (via OpenRouter GPT-4):
-   - Analyzes both participants' performance
-   - Generates scores for:
-     - Logic (1-10)
-     - Clarity (1-10)
-     - Persuasiveness (1-10)
-     - Tone (1-10)
-   - Identifies mistakes
-   - Provides improvement suggestions
-   - Writes detailed feedback
-
-5. **Results Saved**:
-   - AI feedback stored in database
-   - Scores added to leaderboard
-   - Displayed to both participants
-
-**AI Feedback Structure:**
-```json
-{
-  "pro": {
-    "score": 7.5,
-    "logic": 8,
-    "clarity": 7,
-    "persuasiveness": 7,
-    "tone": 8,
-    "mistakes": ["Interrupted opponent", "Weak closing"],
-    "improvements": ["Provide more evidence", "Stronger conclusion"],
-    "feedback": "Detailed paragraph about performance..."
-  },
-  "con": {
-    "score": 8.0,
-    "logic": 8,
-    "clarity": 8,
-    "persuasiveness": 8,
-    "tone": 8,
-    "mistakes": ["Repeated arguments"],
-    "improvements": ["More diverse examples"],
-    "feedback": "Detailed paragraph about performance..."
-  }
-}
+```env
+NEXT_PUBLIC_TURN_URL=turn:turn.example.com:3478
+NEXT_PUBLIC_TURN_USERNAME=replace_me
+NEXT_PUBLIC_TURN_CREDENTIAL=replace_me
 ```
 
-### 7. Leaderboard (`/leaderboard`)
-- Rankings by time period (week/month/all-time)
-- Top 3 podium display with medals
-- Full table with:
-  - Rank
-  - Username
-  - Total score (average across debates)
-  - Number of debates
-  - Badges earned
-- Scores calculated from AI feedback
+Keep all real credentials in ignored local environment files or the deployment platform's secret manager. Variables beginning with `NEXT_PUBLIC_` are intentionally included in browser bundles and must never contain secrets.
 
-### 8. Profile (`/profile/[userId]`)
-- User's debate history
-- Performance statistics
-- Badges earned
-- Personal leaderboard position
+## Commands
 
-## 🏗️ Architecture
-
-### Database Schema (Prisma)
-
-**User**
-- Stores user info from Clerk
-- Links to debates, scores, messages
-
-**Debate**
-- Topic, duration, status
-- Join codes for participants
-- Links to creator, Pro user, Con user
-- Stores AI feedback as JSON
-
-**Message**
-- Chat messages during debate
-- Links to user and debate
-
-**Score**
-- Individual debate scores
-- Broken down by category (logic, clarity, etc.)
-- Used for leaderboard calculations
-
-**Vote**
-- User votes on debate winners
-- One vote per user per debate
-
-**Badge & UserBadge**
-- Achievement system
-- Earned based on performance criteria
-
-### Real-time Communication
-
-**Socket.IO Events:**
-
-**Client → Server:**
-- `join_debate` - Join a debate room
-- `start_debate` - Begin the debate timer
-- `send_message` - Send chat message
-- `transcript_update` - Send speech transcript
-- `signal` - WebRTC signaling data
-
-**Server → Client:**
-- `debate_started` - Debate has begun
-- `debate_ended` - Debate finished
-- `debate_feedback` - AI analysis results
-- `new_message` - New chat message
-- `transcript_update` - Updated transcript
-- `signal` - WebRTC signaling data
-- `user_joined` - Participant joined
-- `error` - Error occurred
-
-### API Routes
-
-**Debates:**
-- `GET /api/debates` - List all debates
-- `POST /api/debates` - Create new debate
-- `GET /api/debates/[id]` - Get debate details
-- `POST /api/debates/[id]` - Join debate (as Con)
-- `PATCH /api/debates/[id]` - Update debate (remove participant)
-- `DELETE /api/debates/[id]` - Delete debate
-
-**Messages:**
-- `GET /api/debates/[id]/messages` - Get debate messages
-- `POST /api/debates/[id]/messages` - Send message
-
-**AI Feedback:**
-- `POST /api/debates/[id]/ai-feedback` - Manually trigger AI analysis
-
-**Leaderboard:**
-- `GET /api/leaderboard?range=week|month|all` - Get rankings
-
-**User Sync:**
-- `POST /api/sync-user` - Sync Clerk user to database
-
-## 🎨 Key Components
-
-### VideoDebateRoom
-- Manages WebRTC peer connections
-- Handles camera/microphone access
-- Speech recognition integration
-- Real-time transcript display
-- Connection status monitoring
-
-### useAdvancedSpeechRecognition Hook
-- Browser Speech Recognition API wrapper
-- Continuous listening with auto-restart
-- Interim and final transcript separation
-- Error handling and recovery
-- Microphone permission management
-
-### SocketContext
-- Global Socket.IO connection
-- Automatic reconnection
-- Connection state management
-- Used throughout the app
-
-## 🔒 Security Features
-
-- Clerk authentication for all user actions
-- Database-level user verification
-- Join codes for debate participation
-- Only debate creator can delete debates
-- Only Pro user can start debates
-- Environment variables for sensitive keys
-
-## 🚀 Deployment
-
-### Build for Production
 ```bash
-npm run build
+npm run dev          # custom Next.js + Socket.IO development server
+npm run build        # production Next.js build
+npm start            # custom production server
+npm run lint         # ESLint
+npm run typecheck    # TypeScript without emitting files
+npm run check        # lint, typecheck, and production build
+npm run db:generate  # regenerate the Prisma client
+npm run db:migrate   # apply committed production migrations
 ```
 
-### Start Production Server
+Useful diagnostics:
+
 ```bash
-npm start
+node scripts/check-db.cjs
+node scripts/check-ai.cjs
+node scripts/check-http.cjs  # while the app is running
 ```
 
-The custom server (`server.js`) handles:
-- Next.js app serving
-- Socket.IO WebSocket connections
-- Debate lifecycle management
-- AI feedback generation
+The database check is read-only. The AI check makes one small Gemini request and therefore uses API quota.
 
-### Environment Setup
-1. Set `NODE_ENV=production`
-2. Configure production database URL
-3. Set up Clerk production keys
-4. Configure OpenRouter API key
-5. Deploy to hosting platform (Vercel, Railway, etc.)
+## Browser and deployment notes
 
-## 🐛 Troubleshooting
+- Speech recognition needs a browser with Web Speech recognition support and a secure context. `localhost` works for development; production should use HTTPS.
+- Chrome and Edge currently provide the most reliable continuous speech-recognition behavior. The UI shows a clear fallback message in unsupported browsers.
+- WebRTC uses a public STUN server by default. Configure a TURN relay for reliable production connectivity across restrictive corporate or mobile networks.
+- Deploy to a host that runs the persistent custom Node process and supports WebSockets. A serverless-only Next.js deployment will not run this Socket.IO lifecycle correctly.
+- Set `NEXT_PUBLIC_SITE_URL` to the exact public origin so cross-origin Socket.IO connections remain restricted.
 
-### Speech Recognition Not Working
-- **Browser Support**: Use Chrome, Edge, or Safari
-- **Permissions**: Allow microphone access in browser settings
-- **HTTPS**: Speech API requires secure context (localhost or HTTPS)
-- **Check Console**: Look for speech recognition logs
+## Security model
 
-### Video Not Connecting
-- **Firewall**: Check if WebRTC ports are blocked
-- **TURN Server**: May need TURN server for restrictive networks
-- **Browser Permissions**: Allow camera/microphone access
-- **Check Console**: Look for WebRTC connection logs
+- Accounts use scrypt password hashing and opaque, database-backed sessions stored in HTTP-only, SameSite cookies.
+- HTTP mutations and Socket.IO participants use the same first-party session; client-supplied user IDs and roles are ignored.
+- Cross-site mutation requests are rejected and authentication attempts are rate-limited.
+- Private debates are visible only to their participants. Join codes are returned only to the creator and compared safely.
+- Debate creation, joining, messaging, voting, topic generation, and analysis retry endpoints are rate-limited.
+- Only Pro can start or end a debate, and both participants must report media readiness before it starts.
+- Transcript text is treated as untrusted evidence in the AI prompt and is length-limited.
+- AI output is schema-constrained, validated server-side, and cannot directly choose the winner.
+- A database uniqueness constraint prevents duplicate score rows for one user and debate.
+- API errors do not expose database details, credentials, password hashes, session tokens, or participant email addresses.
 
-### Socket.IO Connection Issues
-- **CORS**: Check server CORS configuration
-- **Port**: Ensure port 3000 is accessible
-- **Path**: Socket.IO uses `/api/socket.io` path
-- **Check Console**: Look for socket connection logs
+## Troubleshooting
 
-### AI Feedback Not Generating
-- **API Key**: Verify OpenRouter API key is set
-- **Credits**: Check OpenRouter account has credits
-- **Network**: Ensure server can reach OpenRouter API
-- **Timeout**: AI analysis can take 10-30 seconds
+**Camera or transcript does not start**
 
-## 📝 Development Notes
+Use HTTPS or localhost, grant camera and microphone permissions, and click **Start camera** for each participant. If recognition stops because of a transient browser error, use the retry control shown beside the transcript status.
 
-### Custom Server
-The app uses a custom Node.js server (`server.js`) instead of the default Next.js server to support Socket.IO WebSocket connections.
+**Participants cannot see each other**
 
-### Speech Recognition
-- Uses browser's native Web Speech API
-- Requires HTTPS in production (localhost works in dev)
-- Chrome has the best support
-- Continuous listening with auto-restart on errors
+Confirm both participants clicked **Start camera** and that Socket.IO is connected. If it fails only on restrictive networks, configure TURN credentials.
 
-### WebRTC
-- Peer-to-peer connection (no media server)
-- Uses public STUN/TURN servers
-- May need custom TURN server for production
-- SimplePeer library simplifies WebRTC complexity
+**Analysis failed**
 
-## 🤝 Contributing
+Check `GEMINI_API_KEY`, outbound network access, and the server log. A completed debate shows a retry action to an authenticated participant; retrying upserts the existing scores rather than duplicating them.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+**Build fails on a Windows exFAT drive with `EISDIR: illegal operation on a directory, readlink`**
 
-## 📄 License
-
-[Add your license here]
-
-## 🙏 Acknowledgments
-
-- Next.js team for the amazing framework
-- Clerk for authentication
-- OpenRouter for AI API access
-- SimplePeer for WebRTC wrapper
-- Prisma for database tooling
-
----
-
-**Built with ❤️ for intellectual discourse and debate**
+This is a filesystem limitation in the Next.js tracing step. Build from an NTFS volume or deploy from a Linux filesystem; application linting, type checking, and development remain unaffected.

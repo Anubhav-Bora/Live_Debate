@@ -1,169 +1,85 @@
-import { prisma } from "@/lib/prisma";
-import { auth } from "@clerk/nextjs/server";
+import { randomInt } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
-import { ensureUserExists } from "@/lib/userSync";
+import { getCurrentUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { allowRequest } from "@/lib/rateLimit";
 
-function generateCode(length: number): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-}
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-interface DebateRequestBody {
-  topic: string;
-  duration?: number;
-  isPublic?: boolean;
+function generateCode(length = 8) {
+  return Array.from({ length }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join("");
 }
 
 export async function GET() {
   try {
+    const user = await getCurrentUser();
+    const participantFilter: Prisma.DebateWhereInput[] = user
+      ? [{ creatorId: user.id }, { proUserId: user.id }, { conUserId: user.id }]
+      : [];
+
     const debates = await prisma.debate.findMany({
-      include: {
-        proUser: {
-          select: {
-            id: true,
-            username: true,
-            clerkId: true
-          }
-        },
-        conUser: {
-          select: {
-            id: true,
-            username: true,
-            clerkId: true
-          }
-        },
-        _count: {
-          select: { messages: true }
-        }
+      where: { OR: [{ isPublic: true }, ...participantFilter] },
+      select: {
+        id: true,
+        topic: true,
+        status: true,
+        analysisStatus: true,
+        winner: true,
+        duration: true,
+        isPublic: true,
+        createdAt: true,
+        creatorId: true,
+        proUser: { select: { username: true } },
+        conUser: { select: { username: true } },
+        _count: { select: { messages: true } },
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: "desc" },
+      take: 100,
     });
-    return NextResponse.json(debates);
+    return NextResponse.json(debates.map(({ creatorId, ...debate }) => ({
+      ...debate,
+      canDelete: user?.id === creatorId,
+    })), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    console.error("❌ GET /api/debates - Error fetching debates:", {
-      error: error instanceof Error ? error.stack || error.message : error,
-      errorType: error?.constructor?.name || 'Unknown',
-      timestamp: new Date().toISOString()
-    });
-    return NextResponse.json(
-      { error: "Failed to fetch debates" },
-      { status: 500 }
-    );
+    console.error("Could not list debates:", error);
+    return NextResponse.json({ error: "Failed to fetch debates" }, { status: 500 });
   }
 }
 
-export async function POST(req: Request) {
-  let userId: string | undefined;
-  let topic: string | undefined;
-  let requestBody: DebateRequestBody;
-  
+export async function POST(request: Request) {
   try {
-    // Parse request body
-    try {
-      requestBody = await req.json() as DebateRequestBody;
-    } catch (parseError) {
-      console.error('❌ POST /api/debates - Failed to parse request body:', parseError);
-      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
-    }
-    if (!requestBody) {
-      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!allowRequest(`create:${user.id}`, 10, 60_000)) {
+      return NextResponse.json({ error: "Too many debates created. Please wait a minute." }, { status: 429 });
     }
 
-    const body: DebateRequestBody = requestBody;
-    topic = body.topic;
-    const { duration, isPublic } = body;
-    
-    // Check authentication
-    let authSession;
-    try {
-      authSession = await auth();
-      userId = authSession.userId || undefined;
-    } catch (authError) {
-      console.error('❌ POST /api/debates - Authentication error:', authError);
-      return NextResponse.json({ error: "Authentication failed" }, { status: 500 });
+    const body = (await request.json()) as { topic?: unknown; duration?: unknown; isPublic?: unknown };
+    const topic = typeof body.topic === "string" ? body.topic.trim() : "";
+    const duration = Number(body.duration);
+    if (topic.length < 5 || topic.length > 240) {
+      return NextResponse.json({ error: "Topic must be between 5 and 240 characters." }, { status: 400 });
+    }
+    if (!Number.isInteger(duration) || duration < 60 || duration > 7_200) {
+      return NextResponse.json({ error: "Duration must be between 1 minute and 2 hours." }, { status: 400 });
     }
 
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Validate topic
-    if (!topic || typeof topic !== 'string' || topic.trim().length < 1) {
-      return NextResponse.json({ error: "Debate topic is required." }, { status: 400 });
-    }
-
-    // Ensure user exists
-    let user;
-    try {
-      user = await ensureUserExists(userId);
-    } catch (syncError) {
-      console.error("❌ POST /api/debates - Error syncing user from Clerk:", {
-        error: syncError instanceof Error ? syncError.stack || syncError.message : syncError,
-        userId,
-        errorType: syncError?.constructor?.name || 'Unknown'
-      });
-      return NextResponse.json({ error: "Failed to sync user account" }, { status: 500 });
-    }
-
-    // Build debate data
-    const debateData = {
-      topic: topic.trim(),
-      duration: duration || 180,
-      joinCodeCon: generateCode(8),
-      isPublic: isPublic !== false,
-      creatorId: user.id,
-      proUserId: user.id,
-      proDisplayName: user.email
-    };
-
-    // Create debate
-    let newDebate;
-    try {
-      newDebate = await prisma.debate.create({
-        data: debateData,
-        include: {
-          proUser: true,
-          creator: true
-        }
-      });
-    } catch (dbError) {
-      console.error('❌ POST /api/debates - Database error creating debate:', {
-        error: dbError instanceof Error ? dbError.stack || dbError.message : dbError,
-        errorType: dbError?.constructor?.name || 'Unknown',
-        debateData,
-        timestamp: new Date().toISOString()
-      });
-      return NextResponse.json({ error: "Database error creating debate" }, { status: 500 });
-    }
-
-    const response = {
-      id: newDebate.id,
-      joinCodeCon: newDebate.joinCodeCon,
-      duration: newDebate.duration,
-      topic: newDebate.topic
-    };
-    
-    console.log('🎉 POST /api/debates - Debate creation completed successfully:', response);
-    return NextResponse.json(response);
-    
-  } catch (error) {
-    console.error("❌ POST /api/debates - Unexpected error creating debate:", {
-      error: error instanceof Error ? error.stack || error.message : error,
-      errorType: error?.constructor?.name || 'Unknown',
-      userId,
-      topic,
-      timestamp: new Date().toISOString(),
-      nodeEnv: process.env.NODE_ENV,
-      databaseUrl: process.env.DATABASE_URL ? 'SET' : 'NOT_SET',
-      clerkSecretKey: process.env.CLERK_SECRET_KEY ? 'SET' : 'NOT_SET'
+    const debate = await prisma.debate.create({
+      data: {
+        topic,
+        duration,
+        joinCodeCon: generateCode(),
+        isPublic: body.isPublic !== false,
+        creatorId: user.id,
+        proUserId: user.id,
+        proDisplayName: user.username,
+      },
+      select: { id: true, joinCodeCon: true, duration: true, topic: true, isPublic: true },
     });
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json(debate, { status: 201 });
+  } catch (error) {
+    console.error("Could not create debate:", error);
+    return NextResponse.json({ error: "Could not create the debate." }, { status: 500 });
   }
 }
