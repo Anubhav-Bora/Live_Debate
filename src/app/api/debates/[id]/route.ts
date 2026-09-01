@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { allowRequest } from "@/lib/rateLimit";
+import { emitDashboardUpdated, emitDebateEvent } from "@/lib/realtime";
+import { isSafeIdentifier, readJsonObject } from "@/lib/request";
 
 function secureCodeMatch(value: string, expected: string) {
   const provided = Buffer.from(value.trim().toUpperCase());
@@ -69,6 +71,7 @@ function safeDebateResponse(debate: SelectedDebate, userId: string | null, inclu
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    if (!isSafeIdentifier(id)) return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     const { user } = await currentDatabaseUser();
     const debate = await prisma.debate.findUnique({ where: { id }, select: publicSelect });
     if (!debate) return NextResponse.json({ error: "Debate not found" }, { status: 404 });
@@ -90,13 +93,15 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    if (!isSafeIdentifier(id)) return NextResponse.json({ error: "Invalid debate ID" }, { status: 400 });
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (!allowRequest(`join:${user.id}:${id}`, 8, 60_000)) {
       return NextResponse.json({ error: "Too many join attempts. Please wait a minute." }, { status: 429 });
     }
 
-    const body = (await request.json()) as { action?: unknown; joinCode?: unknown };
+    const body = await readJsonObject<{ action?: unknown; joinCode?: unknown }>(request);
+    if (!body) return NextResponse.json({ error: "A valid JSON request is required." }, { status: 400 });
     if (body.action !== "join_con") {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }
@@ -122,6 +127,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     const updated = await prisma.debate.findUnique({ where: { id }, select: publicSelect });
     if (!updated) return NextResponse.json({ error: "Debate not found" }, { status: 404 });
+    emitDebateEvent(id, "membership_update", { proUser: updated.proUser, conUser: updated.conUser });
+    emitDashboardUpdated({ debateId: id, status: updated.status });
     return NextResponse.json(safeDebateResponse(updated, user.id));
   } catch (error) {
     console.error("Could not join debate:", error);
@@ -132,21 +139,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    if (!isSafeIdentifier(id)) return NextResponse.json({ error: "Debate not found" }, { status: 404 });
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const debate = await prisma.debate.findUnique({ where: { id }, select: { creatorId: true, status: true } });
+    const debate = await prisma.debate.findUnique({
+      where: { id },
+      select: { creatorId: true, status: true, analysisStatus: true },
+    });
     if (!debate || debate.creatorId !== user.id) {
       return NextResponse.json({ error: "Not authorized to delete this debate." }, { status: 403 });
     }
     if (debate.status === "in-progress") {
       return NextResponse.json({ error: "An active debate cannot be deleted." }, { status: 409 });
     }
+    if (debate.analysisStatus === "analyzing") {
+      return NextResponse.json({ error: "Wait for the current analysis to finish before deleting." }, { status: 409 });
+    }
     await prisma.$transaction([
       prisma.message.deleteMany({ where: { debateId: id } }),
       prisma.score.deleteMany({ where: { debateId: id } }),
-      prisma.vote.deleteMany({ where: { debateId: id } }),
       prisma.debate.delete({ where: { id } }),
     ]);
+    emitDebateEvent(id, "debate_deleted", { debateId: id });
+    emitDashboardUpdated({ debateId: id, deleted: true });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Could not delete debate:", error);
@@ -157,9 +172,11 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    if (!isSafeIdentifier(id)) return NextResponse.json({ error: "Invalid debate ID" }, { status: 400 });
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    const body = (await request.json()) as { action?: unknown };
+    const body = await readJsonObject<{ action?: unknown }>(request);
+    if (!body) return NextResponse.json({ error: "A valid JSON request is required." }, { status: 400 });
     const debate = await prisma.debate.findUnique({ where: { id } });
     if (!debate || debate.creatorId !== user.id) {
       return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -172,6 +189,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       data: { conUserId: null },
       select: publicSelect,
     });
+    emitDebateEvent(id, "membership_update", { proUser: updated.proUser, conUser: updated.conUser });
+    emitDashboardUpdated({ debateId: id, status: updated.status });
     return NextResponse.json(safeDebateResponse(updated, user.id, true));
   } catch (error) {
     console.error("Could not update debate:", error);

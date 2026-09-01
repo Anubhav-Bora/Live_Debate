@@ -23,7 +23,6 @@ model User {
   debatesPro     Debate[]    @relation("ProUser")
   debatesCon     Debate[]    @relation("ConUser")
   userBadges     UserBadge[]
-  votes          Vote[]
   sessions       Session[]
 }
 
@@ -41,22 +40,23 @@ model Session {
 }
 
 model Debate {
-  id             String    @id @default(cuid())
-  topic          String
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  duration       Int       @default(180)
-  status         String    @default("waiting")
-  startTime      DateTime?
-  endTime        DateTime?
-  aiFeedback     Json?
-  analysisStatus String    @default("idle")
-  winner         String?
-  proTranscript  String    @default("")
-  conTranscript  String    @default("")
-  joinCodeCon    String    @unique
-  isPublic       Boolean   @default(true)
-  proDisplayName String?
+  id                String    @id @default(cuid())
+  topic             String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  duration          Int       @default(180)
+  status            String    @default("waiting")
+  startTime         DateTime?
+  endTime           DateTime?
+  aiFeedback        Json?
+  analysisStatus    String    @default("idle")
+  analysisStartedAt DateTime?
+  winner            String?
+  proTranscript     String    @default("")
+  conTranscript     String    @default("")
+  joinCodeCon       String    @unique
+  isPublic          Boolean   @default(true)
+  proDisplayName    String?
 
   // Foreign Keys
   creatorId String
@@ -69,7 +69,11 @@ model Debate {
   conUser  User?     @relation("ConUser", fields: [conUserId], references: [id])
   messages Message[]
   scores   Score[]
-  votes    Vote[]
+
+  @@index([status, createdAt])
+  @@index([creatorId])
+  @@index([proUserId])
+  @@index([conUserId])
 }
 
 model Message {
@@ -83,6 +87,8 @@ model Message {
   // Relations
   debate Debate @relation(fields: [debateId], references: [id])
   sender User   @relation(fields: [senderId], references: [id])
+
+  @@index([debateId, createdAt])
 }
 
 model Score {
@@ -100,6 +106,9 @@ model Score {
   user   User   @relation(fields: [userId], references: [id])
 
   @@unique([userId, debateId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([debateId])
 }
 
 model Badge {
@@ -125,18 +134,4 @@ model UserBadge {
   user  User  @relation(fields: [userId], references: [id])
 
   @@unique([userId, badgeId])
-}
-
-model Vote {
-  id        String   @id @default(cuid())
-  userId    String
-  debateId  String
-  winner    String
-  createdAt DateTime @default(now())
-
-  // Relations
-  debate Debate @relation(fields: [debateId], references: [id])
-  user   User   @relation(fields: [userId], references: [id])
-
-  @@unique([userId, debateId])
 }

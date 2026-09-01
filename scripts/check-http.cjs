@@ -20,7 +20,6 @@ async function main() {
   const debateDetail = firstDebateId ? await request(`/api/debates/${encodeURIComponent(firstDebateId)}`) : null;
   const firstUserId = Array.isArray(leaderboard.body?.leaderboard) ? leaderboard.body.leaderboard[0]?.id : null;
   const profile = firstUserId ? await request(`/api/users/${encodeURIComponent(firstUserId)}`) : null;
-  const legacyAi = await request("/api/ai-feedback", { method: "POST" });
   const unauthenticatedCreate = await request("/api/debates", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -29,6 +28,7 @@ async function main() {
 
   const checks = {
     health: health.response.status === 200 && health.body?.database === "connected",
+    aiConfigurationReported: ["configured", "unconfigured"].includes(health.body?.ai),
     leaderboardShape: leaderboard.response.status === 200 && Array.isArray(leaderboard.body?.leaderboard),
     debateList: debates.response.status === 200 && Array.isArray(debates.body),
     debateDetail: !debateDetail || debateDetail.response.status === 200,
@@ -38,7 +38,6 @@ async function main() {
       !debates.text.includes("clerkId") &&
       (!debateDetail || (!Object.hasOwn(debateDetail.body, "joinCodeCon") && !debateDetail.text.includes("clerkId"))) &&
       (!profile || (!Object.hasOwn(profile.body, "email") && !Object.hasOwn(profile.body, "clerkId"))),
-    legacyAiClosed: legacyAi.response.status === 410,
     unauthenticatedCreateBlocked: unauthenticatedCreate.response.status === 401,
     securityHeader: health.response.headers.get("x-content-type-options") === "nosniff",
   };

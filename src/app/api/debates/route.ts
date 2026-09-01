@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { allowRequest } from "@/lib/rateLimit";
+import { emitDashboardUpdated } from "@/lib/realtime";
+import { readJsonObject } from "@/lib/request";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -55,7 +57,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Too many debates created. Please wait a minute." }, { status: 429 });
     }
 
-    const body = (await request.json()) as { topic?: unknown; duration?: unknown; isPublic?: unknown };
+    const body = await readJsonObject<{ topic?: unknown; duration?: unknown; isPublic?: unknown }>(request);
+    if (!body) return NextResponse.json({ error: "A valid JSON request is required." }, { status: 400 });
     const topic = typeof body.topic === "string" ? body.topic.trim() : "";
     const duration = Number(body.duration);
     if (topic.length < 5 || topic.length > 240) {
@@ -77,6 +80,7 @@ export async function POST(request: Request) {
       },
       select: { id: true, joinCodeCon: true, duration: true, topic: true, isPublic: true },
     });
+    emitDashboardUpdated({ debateId: debate.id, status: "waiting" });
     return NextResponse.json(debate, { status: 201 });
   } catch (error) {
     console.error("Could not create debate:", error);

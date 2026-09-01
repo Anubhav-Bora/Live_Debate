@@ -104,6 +104,7 @@ export default function DebatePage() {
   const [joinCode, setJoinCode] = useState("");
   const [joining, setJoining] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [ending, setEnding] = useState(false);
   const [sending, setSending] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [timeLeft, setTimeLeft] = useState(0);
@@ -164,6 +165,7 @@ export default function DebatePage() {
       toast.success("Debate is live. Transcription has started.");
     };
     const onEnded = () => {
+      setEnding(false);
       setDebate((current) => current ? { ...current, status: "completed" } : current);
       setAnalysisStatus("analyzing");
       setTimeLeft(0);
@@ -176,7 +178,14 @@ export default function DebatePage() {
     const onMessage = (message: DebateMessage) => {
       setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
     };
+    const onMembership = ({ proUser, conUser }: { proUser: DebateUser; conUser: DebateUser | null }) => {
+      setDebate((current) => current ? { ...current, proUser, conUser } : current);
+    };
     const onPresence = (next: { proReady: boolean; conReady: boolean }) => setPresence(next);
+    const onDeleted = () => {
+      toast.info("This arena was deleted.");
+      router.replace("/debates");
+    };
     const onAppError = ({ message }: { message?: string }) => {
       setStarting(false);
       if (message) toast.error(message);
@@ -188,7 +197,9 @@ export default function DebatePage() {
     socket.on("debate_ended", onEnded);
     socket.on("debate_feedback", onFeedback);
     socket.on("new_message", onMessage);
+    socket.on("membership_update", onMembership);
     socket.on("presence_update", onPresence);
+    socket.on("debate_deleted", onDeleted);
     socket.on("app_error", onAppError);
     if (isConnected) joinRoom();
     return () => {
@@ -198,10 +209,12 @@ export default function DebatePage() {
       socket.off("debate_ended", onEnded);
       socket.off("debate_feedback", onFeedback);
       socket.off("new_message", onMessage);
+      socket.off("membership_update", onMembership);
       socket.off("presence_update", onPresence);
+      socket.off("debate_deleted", onDeleted);
       socket.off("app_error", onAppError);
     };
-  }, [id, isConnected, socket, userLoaded]);
+  }, [id, isConnected, router, socket, userLoaded]);
 
   useEffect(() => {
     if (debate?.status !== "in-progress" || !debate.startTime) {
@@ -266,8 +279,14 @@ export default function DebatePage() {
   };
 
   const endDebate = () => {
-    if (!socket || !confirm("End the debate now and send the recorded arguments for judging?")) return;
-    socket.emit("end_debate", { debateId: id });
+    if (!socket || ending || !confirm("End the debate now and send the recorded arguments for judging?")) return;
+    setEnding(true);
+    socket.timeout(5_000).emit("end_debate", { debateId: id }, (error: Error | null, result?: { ok: boolean; error?: string }) => {
+      if (error || !result?.ok) {
+        setEnding(false);
+        toast.error(result?.error || "The debate could not be ended.");
+      }
+    });
   };
 
   const sendMessage = () => {
@@ -410,7 +429,7 @@ export default function DebatePage() {
 
         {(role === "pro" || role === "con") && user && (
           <GlowCard className="mb-6 overflow-hidden p-0">
-            <VideoDebateRoom debateId={id} userId={user.id} role={role} isDebateActive={debate.status === "in-progress"} />
+            <VideoDebateRoom debateId={id} role={role} isDebateActive={debate.status === "in-progress"} />
           </GlowCard>
         )}
 
@@ -428,7 +447,9 @@ export default function DebatePage() {
 
         {debate.status === "in-progress" && role === "pro" && (
           <div className="mb-6 flex justify-center">
-            <button onClick={endDebate} className="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20">End debate early</button>
+            <button disabled={ending} onClick={endDebate} className="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-wait disabled:opacity-60">
+              {ending ? "Saving final transcript…" : "End debate early"}
+            </button>
           </div>
         )}
 
@@ -515,7 +536,7 @@ function ResultsPanel({ feedback, status, retrying, canRetry, onRetry }: { feedb
   const winnerLabel = feedback.winner === "tie" ? "The debate is a tie" : `${feedback.winner === "pro" ? "Pro" : "Con"} wins`;
   return (
     <GlowCard glowColor="rgba(245,158,11,.28)" className="overflow-hidden">
-      <div className="mb-7 text-center"><Crown className="mx-auto mb-3 h-10 w-10 text-amber-300" /><p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-300">AI judgement</p><h2 className="mt-2 text-3xl font-bold text-white">{winnerLabel}</h2><p className="mx-auto mt-3 max-w-3xl text-sm leading-6 text-slate-300">{feedback.summary}</p></div>
+      <div className="mb-7 text-center"><Crown className="mx-auto mb-3 h-10 w-10 text-amber-300" /><p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-300">Transcript-based assessment</p><h2 className="mt-2 text-3xl font-bold text-white">{winnerLabel}</h2><p className="mx-auto mt-3 max-w-3xl text-sm leading-6 text-slate-300">{feedback.summary}</p>{typeof feedback.confidence === "number" && <p className="mt-3 text-xs text-slate-500">Assessment confidence: {Math.round(feedback.confidence * 100)}% · Based on the captured transcript and argument chat</p>}</div>
       <div className="grid gap-4 lg:grid-cols-2"><ResultSide side="pro" result={feedback.pro} winner={feedback.winner === "pro"} /><ResultSide side="con" result={feedback.con} winner={feedback.winner === "con"} /></div>
     </GlowCard>
   );
@@ -528,6 +549,7 @@ function ResultSide({ side, result, winner }: { side: "pro" | "con"; result?: Pa
       <div className="mb-5 flex items-center justify-between"><div className="flex items-center gap-2"><Target className={`h-5 w-5 ${side === "pro" ? "text-emerald-300" : "text-rose-300"}`} /><h3 className="text-xl font-semibold uppercase text-white">{side}</h3></div><div className="flex items-center gap-2"><span className="text-3xl font-bold text-white">{result?.score?.toFixed(1) ?? "—"}</span><span className="text-xs text-slate-500">/ 10</span></div></div>
       <div className="mb-5 grid grid-cols-2 gap-2">{metrics.map(([label, value]) => <div key={label} className="rounded-xl bg-black/20 p-3"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 font-semibold text-slate-200">{value?.toFixed(1) ?? "—"}</p></div>)}</div>
       <p className="text-sm leading-6 text-slate-300">{result?.feedback}</p>
+      {!!result?.mistakes?.length && <div className="mt-4"><p className="mb-2 text-xs font-semibold uppercase tracking-wider text-rose-300">Weak points</p><ul className="space-y-1.5 text-sm text-slate-400">{result.mistakes.map((item) => <li key={item} className="flex gap-2"><span className="text-rose-300">•</span>{item}</li>)}</ul></div>}
       {!!result?.improvements?.length && <div className="mt-4"><p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#829ee3]">Next steps</p><ul className="space-y-1.5 text-sm text-slate-400">{result.improvements.map((item) => <li key={item} className="flex gap-2"><span className="text-[#829ee3]">•</span>{item}</li>)}</ul></div>}
     </div>
   );

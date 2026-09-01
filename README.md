@@ -11,8 +11,8 @@ DebateArena is a real-time video debate app with browser speech-to-text, persist
 5. WebRTC carries peer-to-peer audio/video. Socket.IO carries authenticated signaling, chat, presence, timer state, and transcript snapshots.
 6. The browser Web Speech API produces separate Pro and Con transcripts. The server continuously persists the latest complete snapshot for recovery.
 7. At timeout, or when Pro ends the debate, the server flushes transcripts and marks analysis as in progress.
-8. Gemini returns schema-constrained feedback. The server validates and clamps all scores, derives the winner from the four category averages, then saves feedback, winner, and both score records in one database transaction.
-9. Results are broadcast to the room and the leaderboard refreshes immediately. Failed AI analysis can be retried from the results screen without creating duplicate scores.
+8. Gemini returns schema-constrained feedback. The server validates and clamps all scores, derives the winner from the four category averages, then saves feedback, winner, score records, and earned achievements in one database transaction.
+9. Results clearly identify the decision as transcript-based, show assessment confidence, and are broadcast immediately to the room, profiles, and leaderboard. Failed analysis can be retried without creating duplicate scores.
 
 ## Stack
 
@@ -47,10 +47,14 @@ Use `cp .env.example .env.local` instead of `copy` on macOS or Linux. Do not run
 ```env
 DATABASE_URL=postgresql://user:password@host/database
 
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
 GEMINI_API_KEY=replace_me
 GEMINI_MODEL=gemini-2.5-flash
+SITE_URL=http://localhost:3000
 ```
+
+`SITE_URL` is optional on Render because the app automatically accepts Render's
+`RENDER_EXTERNAL_URL`. Set it to the exact HTTPS origin when using a custom domain.
+Use `ALLOWED_ORIGINS` for additional comma-separated origins.
 
 Optional production WebRTC relay variables:
 
@@ -61,6 +65,39 @@ NEXT_PUBLIC_TURN_CREDENTIAL=replace_me
 ```
 
 Keep all real credentials in ignored local environment files or the deployment platform's secret manager. Variables beginning with `NEXT_PUBLIC_` are intentionally included in browser bundles and must never contain secrets.
+
+TURN credentials are necessarily delivered to the browser. Use restricted,
+short-lived TURN credentials in production rather than an administrator password
+or another reusable secret.
+
+## Render deployment
+
+The repository includes a native Node `render.yaml`; it does not use Docker. For
+a manually configured Render Web Service, use:
+
+```text
+Build Command: npm ci && npm run build
+Start Command: npm start
+Health Check Path: /api/health
+```
+
+Add these values under **Environment**:
+
+```env
+DATABASE_URL=<your PostgreSQL connection string>
+GEMINI_API_KEY=<a fresh key created in Google AI Studio>
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+Do not add `PORT`; Render supplies it. Do not prefix `GEMINI_API_KEY` with
+`NEXT_PUBLIC_`, paste it into the build command, or commit it to an environment
+file. If you use a custom domain, also set `SITE_URL=https://your-domain.example`.
+The `/api/health` response reports whether the database is reachable and whether
+the AI key is configured, without exposing the key.
+
+Keep this stateful Socket.IO/WebRTC service at one application instance unless
+you add a shared Socket.IO adapter and distributed coordination for room presence,
+transcript buffers, and timers.
 
 ## Commands
 
@@ -73,7 +110,19 @@ npm run typecheck    # TypeScript without emitting files
 npm run check        # lint, typecheck, and production build
 npm run db:generate  # regenerate the Prisma client
 npm run db:migrate   # apply committed production migrations
+npm run db:seed      # idempotently add realistic demo profiles and debates
 ```
+
+The seed creates six profiles and eight completed debates with transcripts,
+messages, structured feedback, rankings, and achievements. Seeded profiles cannot
+sign in by default. Set `SEED_DEMO_PASSWORD` to intentionally enable first-party
+login for all seeded profiles. Production seeding also requires the explicit
+`ALLOW_DATABASE_SEED=true` safety flag.
+
+To replace all existing application records with the curated seed set, run the
+seed once with `RESET_DATABASE_DATA=true` and `ALLOW_DATABASE_RESET=true`. Remove
+those flags immediately afterward. A normal `npm run db:seed` is non-destructive
+and idempotent.
 
 Useful diagnostics:
 
@@ -91,7 +140,7 @@ The database check is read-only. The AI check makes one small Gemini request and
 - Chrome and Edge currently provide the most reliable continuous speech-recognition behavior. The UI shows a clear fallback message in unsupported browsers.
 - WebRTC uses a public STUN server by default. Configure a TURN relay for reliable production connectivity across restrictive corporate or mobile networks.
 - Deploy to a host that runs the persistent custom Node process and supports WebSockets. A serverless-only Next.js deployment will not run this Socket.IO lifecycle correctly.
-- Set `NEXT_PUBLIC_SITE_URL` to the exact public origin so cross-origin Socket.IO connections remain restricted.
+- Render's public origin is detected automatically. Set `SITE_URL` for a custom domain so Socket.IO connections remain restricted to known origins.
 
 ## Security model
 

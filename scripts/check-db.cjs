@@ -17,7 +17,7 @@ async function main() {
     connected: true,
     database: database.database,
     schema: database.schema,
-    analysisColumnsPresent: ["analysisStatus", "winner", "proTranscript", "conTranscript"].every((column) =>
+    analysisColumnsPresent: ["analysisStatus", "analysisStartedAt", "winner", "proTranscript", "conTranscript"].every((column) =>
       columns.some((entry) => entry.column_name === column),
     ),
     duplicateScoreGroups: duplicates.count,

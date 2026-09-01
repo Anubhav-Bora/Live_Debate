@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { allowRequest } from "@/lib/rateLimit";
+import { readJsonObject } from "@/lib/request";
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -8,13 +9,14 @@ export async function POST(request: Request) {
   if (!allowRequest(`topic:${user.id}`, 5, 60_000)) {
     return NextResponse.json({ error: "Please wait before generating another topic." }, { status: 429 });
   }
-  const key = process.env.GEMINI_API_KEY;
+  const key = process.env.GEMINI_API_KEY?.trim();
   if (!key) return NextResponse.json({ error: "AI is not configured" }, { status: 503 });
 
   try {
-    const body = (await request.json()) as { category?: unknown };
+    const body = await readJsonObject<{ category?: unknown }>(request);
+    if (!body) return NextResponse.json({ error: "A valid JSON request is required." }, { status: 400 });
     const category = typeof body.category === "string" ? body.category.trim().slice(0, 60) : "general";
-    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
       headers: { "x-goog-api-key": key, "Content-Type": "application/json" },

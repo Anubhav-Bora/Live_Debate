@@ -4,7 +4,11 @@ const { parse } = require("url");
 const next = require("next");
 const { Server: SocketIOServer } = require("socket.io");
 const { PrismaClient } = require("@prisma/client");
-const { judgeDebate } = require("./lib/ai-judge");
+const {
+  AnalysisConflictError,
+  failedFeedback,
+  generateAndPersistAnalysis,
+} = require("./lib/debate-analysis");
 
 require("dotenv").config({ path: ".env.local", quiet: true });
 require("dotenv").config({ path: ".env", quiet: true });
@@ -20,6 +24,7 @@ const handle = app.getRequestHandler();
 const prisma = new PrismaClient({ log: production ? ["error"] : ["warn", "error"] });
 
 const debateTimers = new Map();
+const analysisRecoveryTimers = new Map();
 const transcriptCache = new Map();
 const transcriptFlushTimers = new Map();
 const analysesInFlight = new Set();
@@ -32,7 +37,12 @@ const cleanTranscript = (value) =>
 
 function getAllowedOrigins() {
   const origins = new Set([`http://localhost:${port}`, `http://127.0.0.1:${port}`]);
-  for (const value of [process.env.NEXT_PUBLIC_SITE_URL, process.env.ALLOWED_ORIGINS]) {
+  for (const value of [
+    process.env.RENDER_EXTERNAL_URL,
+    process.env.SITE_URL,
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.ALLOWED_ORIGINS,
+  ]) {
     if (!value) continue;
     for (const origin of value.split(",")) {
       const normalized = origin.trim().replace(/\/$/, "");
@@ -70,7 +80,7 @@ async function authenticateSocket(socket, nextCallback) {
   let token = tokenPair ? tokenPair.slice("debate_session=".length) : "";
   try { token = decodeURIComponent(token); } catch { token = ""; }
   if (!token) {
-    socket.data.userId = null;
+    socket.data.authUserId = null;
     nextCallback();
     return;
   }
@@ -82,11 +92,11 @@ async function authenticateSocket(socket, nextCallback) {
     });
     if (!session || session.expiresAt <= new Date()) {
       if (session) await prisma.session.delete({ where: { id: session.id } }).catch(() => undefined);
-      socket.data.userId = null;
+      socket.data.authUserId = null;
       nextCallback();
       return;
     }
-    socket.data.userId = session.userId;
+    socket.data.authUserId = session.userId;
     nextCallback();
   } catch (error) {
     console.warn("Socket session lookup failed:", error instanceof Error ? error.message : error);
@@ -191,134 +201,105 @@ async function refreshRoomMembership(io, debateId, suppliedDebate) {
     connectedSocket.rooms.has(roomName(debateId)),
   );
   for (const connectedSocket of sockets) {
-    const nextRole = roleForDebate(debate, connectedSocket.data.userId);
+    const nextRole = roleForDebate(debate, connectedSocket.data.authUserId);
     if (connectedSocket.data.role !== nextRole) connectedSocket.data.mediaReady = false;
     connectedSocket.data.role = nextRole;
-    connectedSocket.data.userId = nextRole === "pro"
-      ? debate.proUser?.id
-      : nextRole === "con"
-        ? debate.conUser?.id
-        : null;
   }
-}
-
-function scoreWrite(userId, debateId, participant) {
-  const data = {
-    logic: participant.logic,
-    clarity: participant.clarity,
-    persuasiveness: participant.persuasiveness,
-    tone: participant.tone,
-  };
-  return prisma.score.upsert({
-    where: { userId_debateId: { userId, debateId } },
-    create: { ...data, userId, debateId },
-    update: data,
+  io.to(roomName(debateId)).emit("membership_update", {
+    proUser: debate.proUser,
+    conUser: debate.conUser,
   });
 }
 
-async function analyzeDebate(debateId, io, { force = false } = {}) {
+function scheduleAnalysisRecovery(debateId, analysisStartedAt, io) {
+  const existing = analysisRecoveryTimers.get(debateId);
+  if (existing) clearTimeout(existing);
+  const staleAt = analysisStartedAt
+    ? analysisStartedAt.getTime() + 2 * 60_000
+    : Date.now();
+  const timer = setTimeout(async () => {
+    analysisRecoveryTimers.delete(debateId);
+    try {
+      const reset = await prisma.debate.updateMany({
+        where: {
+          id: debateId,
+          status: "completed",
+          analysisStatus: "analyzing",
+          OR: [
+            { analysisStartedAt: null },
+            { analysisStartedAt: { lte: new Date(Date.now() - 2 * 60_000) } },
+          ],
+        },
+        data: { analysisStatus: "failed", analysisStartedAt: null },
+      });
+      if (reset.count === 1) await analyzeDebate(debateId, io);
+    } catch (error) {
+      console.error(`Could not recover analysis ${debateId}:`, error);
+    }
+  }, Math.max(0, staleAt - Date.now()));
+  analysisRecoveryTimers.set(debateId, timer);
+}
+
+async function analyzeDebate(debateId, io) {
   if (analysesInFlight.has(debateId)) return;
   analysesInFlight.add(debateId);
   try {
     await flushTranscripts(debateId);
-    const debate = await prisma.debate.findUnique({
-      where: { id: debateId },
-      include: {
-        proUser: true,
-        conUser: true,
-        messages: { orderBy: { createdAt: "asc" }, select: { role: true, content: true } },
-      },
-    });
-    if (!debate || debate.status !== "completed") return;
-    if (!force && debate.analysisStatus === "completed" && debate.aiFeedback) return;
-
-    await prisma.debate.update({ where: { id: debateId }, data: { analysisStatus: "analyzing" } });
     io.to(roomName(debateId)).emit("analysis_status", { status: "analyzing" });
-
-    if (!debate.proUser || !debate.conUser) {
-      const feedback = {
-        status: "insufficient",
-        winner: null,
-        summary: "Both participants must join before a debate can be judged.",
-        pro: { joined: Boolean(debate.proUser) },
-        con: { joined: Boolean(debate.conUser) },
-        generatedAt: new Date().toISOString(),
-      };
-      await prisma.debate.update({
-        where: { id: debateId },
-        data: { aiFeedback: feedback, analysisStatus: "completed", winner: null },
-      });
-      io.to(roomName(debateId)).emit("debate_feedback", feedback);
-      return;
-    }
-
-    const evidenceLength = (role, transcript) =>
-      transcript.length + debate.messages
-        .filter((message) => message.role === role)
-        .reduce((total, message) => total + message.content.length, 0);
-    if (evidenceLength("pro", debate.proTranscript) < 20 || evidenceLength("con", debate.conTranscript) < 20) {
-      const feedback = {
-        status: "insufficient",
-        winner: null,
-        summary: "There was not enough recorded argument from both sides to select a fair winner.",
-        pro: { joined: true, score: null },
-        con: { joined: true, score: null },
-        generatedAt: new Date().toISOString(),
-      };
-      await prisma.debate.update({
-        where: { id: debateId },
-        data: { aiFeedback: feedback, analysisStatus: "completed", winner: null },
-      });
-      io.to(roomName(debateId)).emit("debate_feedback", feedback);
-      return;
-    }
-
-    const feedback = await judgeDebate({
-      topic: debate.topic,
-      proTranscript: debate.proTranscript,
-      conTranscript: debate.conTranscript,
-      messages: debate.messages,
+    const feedback = await generateAndPersistAnalysis({ prisma, debateId });
+    io.to(roomName(debateId)).emit("debate_feedback", feedback);
+    io.emit("dashboard_updated", {
+      debateId,
+      winner: feedback.winner,
+      analysisStatus: "completed",
     });
-    await prisma.$transaction([
-      prisma.debate.update({
-        where: { id: debateId },
-        data: { aiFeedback: feedback, analysisStatus: "completed", winner: feedback.winner },
-      }),
-      scoreWrite(debate.proUser.id, debateId, feedback.pro),
-      scoreWrite(debate.conUser.id, debateId, feedback.con),
-    ]);
-    io.to(roomName(debateId)).emit("debate_feedback", feedback);
-    io.emit("dashboard_updated", { debateId, winner: feedback.winner });
   } catch (error) {
+    if (error instanceof AnalysisConflictError || error?.code === "ANALYSIS_CONFLICT") return;
     console.error(`Analysis failed for debate ${debateId}:`, error);
-    const feedback = {
-      status: "failed",
-      winner: null,
-      message: "AI analysis could not be completed. You can safely retry.",
-      retryable: true,
-      generatedAt: new Date().toISOString(),
-    };
-    await prisma.debate.update({
-      where: { id: debateId },
-      data: { aiFeedback: feedback, analysisStatus: "failed", winner: null },
-    }).catch((databaseError) => console.error("Could not save analysis failure:", databaseError));
+    const feedback = failedFeedback();
     io.to(roomName(debateId)).emit("debate_feedback", feedback);
+    io.emit("dashboard_updated", { debateId, winner: null, analysisStatus: "failed" });
   } finally {
     analysesInFlight.delete(debateId);
+    transcriptCache.delete(debateId);
   }
+}
+
+async function requestFinalTranscripts(debateId, io) {
+  const sockets = await io.in(roomName(debateId)).fetchSockets();
+  const participantSocketIds = sockets
+    .filter((socket) => ["pro", "con"].includes(socket.data.role))
+    .map((socket) => socket.id);
+  if (!participantSocketIds.length) return;
+
+  await new Promise((resolve) => {
+    io.timeout(1_200)
+      .to(participantSocketIds)
+      .emit("transcript_flush_requested", {}, () => resolve());
+  });
 }
 
 async function finalizeDebate(debateId, io) {
   clearDebateTimer(debateId);
+  const current = await prisma.debate.findUnique({ where: { id: debateId }, select: { status: true } });
+  if (current?.status === "in-progress") {
+    await requestFinalTranscripts(debateId, io);
+  }
   await flushTranscripts(debateId);
   const updated = await prisma.debate.updateMany({
     where: { id: debateId, status: "in-progress" },
-    data: { status: "completed", endTime: new Date(), analysisStatus: "analyzing" },
+    data: {
+      status: "completed",
+      endTime: new Date(),
+      analysisStatus: "idle",
+      analysisStartedAt: null,
+    },
   });
   if (updated.count > 0) {
     io.to(roomName(debateId)).emit("debate_ended", { analysisStatus: "analyzing" });
+    io.emit("dashboard_updated", { debateId, status: "completed", analysisStatus: "analyzing" });
   }
-  await analyzeDebate(debateId, io);
+  analyzeDebate(debateId, io).catch((error) => console.error(`Could not analyze ${debateId}:`, error));
 }
 
 async function recoverActiveDebates(io) {
@@ -334,10 +315,19 @@ async function recoverActiveDebates(io) {
   }
 
   const interruptedAnalyses = await prisma.debate.findMany({
-    where: { status: "completed", analysisStatus: "analyzing" },
-    select: { id: true },
+    where: {
+      status: "completed",
+      analysisStatus: { in: ["idle", "analyzing"] },
+    },
+    select: { id: true, analysisStatus: true, analysisStartedAt: true },
   });
-  await Promise.allSettled(interruptedAnalyses.map(({ id }) => analyzeDebate(id, io, { force: true })));
+  for (const debate of interruptedAnalyses) {
+    if (debate.analysisStatus === "idle") {
+      analyzeDebate(debate.id, io).catch((error) => console.error("Analysis recovery failed:", error));
+    } else {
+      scheduleAnalysisRecovery(debate.id, debate.analysisStartedAt, io);
+    }
+  }
 }
 
 async function start() {
@@ -377,14 +367,13 @@ async function start() {
         if (!isSafeId(debateId)) throw new Error("Invalid debate ID");
         const debate = await loadDebate(debateId);
         if (!debate) throw new Error("Debate not found");
-        const role = roleForDebate(debate, socket.data.userId);
+        const role = roleForDebate(debate, socket.data.authUserId);
         if (!debate.isPublic && role === "viewer") throw new Error("This debate is private");
 
         const changedDebate = socket.data.debateId !== debateId;
         if (socket.data.debateId) socket.leave(roomName(socket.data.debateId));
         socket.data.debateId = debateId;
         socket.data.role = role;
-        socket.data.userId = role === "pro" ? debate.proUser?.id : role === "con" ? debate.conUser?.id : null;
         if (changedDebate) socket.data.mediaReady = false;
         socket.join(roomName(debateId));
         await refreshRoomMembership(io, debateId, debate);
@@ -417,7 +406,7 @@ async function start() {
           throw new Error("Only the Pro participant can start this debate");
         }
         const debate = await loadDebate(debateId);
-        if (!debate || debate.proUser?.id !== socket.data.userId) throw new Error("Not authorized");
+        if (!debate || debate.proUser?.id !== socket.data.authUserId) throw new Error("Not authorized");
         if (!debate.conUser) throw new Error("Wait for the Con participant to join");
         if (debate.status !== "waiting") throw new Error("This debate has already started");
         const connectedSockets = await io.in(roomName(debateId)).fetchSockets();
@@ -431,7 +420,14 @@ async function start() {
         const startTime = new Date();
         const result = await prisma.debate.updateMany({
           where: { id: debateId, status: "waiting", conUserId: { not: null } },
-          data: { status: "in-progress", startTime, endTime: null, analysisStatus: "idle", winner: null },
+          data: {
+            status: "in-progress",
+            startTime,
+            endTime: null,
+            analysisStatus: "idle",
+            analysisStartedAt: null,
+            winner: null,
+          },
         });
         if (result.count !== 1) throw new Error("The debate could not be started");
 
@@ -447,6 +443,7 @@ async function start() {
           startTime: startTime.toISOString(),
           duration: debate.duration,
         });
+        io.emit("dashboard_updated", { debateId, status: "in-progress", analysisStatus: "idle" });
         acknowledge(ack, { ok: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Could not start debate";
@@ -465,7 +462,7 @@ async function start() {
           where: { id: payload.debateId },
           select: { status: true, proUserId: true },
         });
-        if (!debate || debate.proUserId !== socket.data.userId) throw new Error("Not authorized");
+        if (!debate || debate.proUserId !== socket.data.authUserId) throw new Error("Not authorized");
         if (debate.status !== "in-progress") throw new Error("The debate is not active");
         await finalizeDebate(payload.debateId, io);
         acknowledge(ack, { ok: true });
@@ -490,7 +487,7 @@ async function start() {
         });
         if (!debate || debate.status !== "in-progress") throw new Error("The debate is not active");
         const expectedUserId = role === "pro" ? debate.proUserId : debate.conUserId;
-        if (!expectedUserId || expectedUserId !== socket.data.userId) throw new Error("Participant access changed");
+        if (!expectedUserId || expectedUserId !== socket.data.authUserId) throw new Error("Participant access changed");
         const transcript = cleanTranscript(payload.transcript);
         if (!transcript) return acknowledge(ack, { ok: true });
         const state = transcriptStateFor(debate);
@@ -519,9 +516,9 @@ async function start() {
         });
         if (debate?.status !== "in-progress") throw new Error("The debate is not active");
         const expectedUserId = role === "pro" ? debate.proUserId : debate.conUserId;
-        if (!expectedUserId || expectedUserId !== socket.data.userId) throw new Error("Participant access changed");
+        if (!expectedUserId || expectedUserId !== socket.data.authUserId) throw new Error("Participant access changed");
         const message = await prisma.message.create({
-          data: { content, role, debateId, senderId: socket.data.userId },
+          data: { content, role, debateId, senderId: socket.data.authUserId },
           include: { sender: { select: { id: true, username: true } } },
         });
         io.to(roomName(debateId)).emit("new_message", message);
@@ -570,7 +567,8 @@ async function start() {
   async function shutdown(signal) {
     console.log(`${signal} received; shutting down cleanly.`);
     for (const timer of debateTimers.values()) clearTimeout(timer);
-    for (const timer of transcriptFlushTimers.values()) clearTimeout(timer);
+    for (const timer of analysisRecoveryTimers.values()) clearTimeout(timer);
+    await Promise.allSettled([...transcriptCache.keys()].map((debateId) => flushTranscripts(debateId)));
     io.close();
     httpServer.close();
     delete globalThis.debateRealtime;

@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isSafeIdentifier } from "@/lib/request";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ userId: string }> }) {
   try {
     const { userId } = await params;
+    if (!isSafeIdentifier(userId)) return NextResponse.json({ error: "User not found" }, { status: 404 });
     const [user, scoreSummary] = await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },

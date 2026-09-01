@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { generateAndPersistAnalysis } from "@/lib/debateAnalysis";
+import { AnalysisConflictError, generateAndPersistAnalysis } from "@/lib/debateAnalysis";
 import { allowRequest } from "@/lib/rateLimit";
+import { emitDashboardUpdated, emitDebateEvent } from "@/lib/realtime";
+import { isSafeIdentifier } from "@/lib/request";
 
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  if (!isSafeIdentifier(id)) return NextResponse.json({ error: "Invalid debate ID" }, { status: 400 });
   try {
-    const { id } = await params;
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     if (!allowRequest(`analysis:${user.id}:${id}`, 3, 5 * 60_000)) {
@@ -30,17 +33,22 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "Analysis is already available." }, { status: 409 });
     }
     const feedback = await generateAndPersistAnalysis(id);
-    const realtime = (globalThis as typeof globalThis & {
-      debateRealtime?: {
-        to(room: string): { emit(event: string, payload: unknown): void };
-        emit(event: string, payload: unknown): void;
-      };
-    }).debateRealtime;
-    realtime?.to(`debate_${id}`).emit("debate_feedback", feedback);
-    realtime?.emit("dashboard_updated", { debateId: id, winner: feedback.winner });
+    emitDebateEvent(id, "debate_feedback", feedback);
+    emitDashboardUpdated({ debateId: id, winner: feedback.winner, analysisStatus: "completed" });
     return NextResponse.json(feedback);
   } catch (error) {
+    if (error instanceof AnalysisConflictError || (error as { code?: string })?.code === "ANALYSIS_CONFLICT") {
+      return NextResponse.json({ error: "Analysis is already in progress." }, { status: 409 });
+    }
     console.error("Could not generate debate analysis:", error);
+    const failed = await prisma.debate.findUnique({
+      where: { id },
+      select: { aiFeedback: true, analysisStatus: true },
+    }).catch(() => null);
+    if (failed?.analysisStatus === "failed" && failed.aiFeedback) {
+      emitDebateEvent(id, "debate_feedback", failed.aiFeedback);
+      emitDashboardUpdated({ debateId: id, winner: null, analysisStatus: "failed" });
+    }
     return NextResponse.json(
       { error: "AI analysis could not be completed. Check the server configuration and retry." },
       { status: 502 },

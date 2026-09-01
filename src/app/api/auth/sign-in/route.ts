@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { createSession, requestFingerprint, setSessionCookie, verifyPassword } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { allowRequest } from "@/lib/rateLimit";
+import { readJsonObject } from "@/lib/request";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { email?: unknown; password?: unknown };
+    const body = await readJsonObject<{ email?: unknown; password?: unknown }>(request);
+    if (!body) return NextResponse.json({ error: "A valid JSON request is required." }, { status: 400 });
     const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const password = typeof body.password === "string" ? body.password : "";
     const rateKey = `signin:${requestFingerprint(request)}:${email.slice(0, 100)}`;

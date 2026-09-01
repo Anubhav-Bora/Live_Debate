@@ -15,7 +15,6 @@ type PeerInstance = {
 
 interface VideoDebateRoomProps {
   debateId: string;
-  userId: string;
   role: "pro" | "con";
   isDebateActive: boolean;
 }
@@ -27,6 +26,7 @@ export default function VideoDebateRoom({ debateId, role, isDebateActive }: Vide
   const streamRef = useRef<MediaStream | null>(null);
   const peerRef = useRef<PeerInstance | null>(null);
   const transcriptSendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestTranscriptRef = useRef("");
 
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -47,6 +47,7 @@ export default function VideoDebateRoom({ debateId, role, isDebateActive }: Vide
     interimResults: true,
   });
   const replaceSpeechTranscript = speech.replaceTranscript;
+  latestTranscriptRef.current = speech.transcript;
 
   const refreshDevices = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
@@ -216,6 +217,23 @@ export default function VideoDebateRoom({ debateId, role, isDebateActive }: Vide
       if (transcriptSendTimer.current) clearTimeout(transcriptSendTimer.current);
     };
   }, [debateId, isConnected, isDebateActive, role, socket, speech.finalTranscript]);
+
+  useEffect(() => {
+    if (!socket) return;
+    const flushTranscript = (_payload: unknown, acknowledge?: () => void) => {
+      const transcript = latestTranscriptRef.current.trim();
+      if (!isDebateActive || !transcript) {
+        acknowledge?.();
+        return;
+      }
+      if (transcriptSendTimer.current) clearTimeout(transcriptSendTimer.current);
+      socket.timeout(900).emit("transcript_update", { debateId, transcript }, () => acknowledge?.());
+    };
+    socket.on("transcript_flush_requested", flushTranscript);
+    return () => {
+      socket.off("transcript_flush_requested", flushTranscript);
+    };
+  }, [debateId, isDebateActive, socket]);
 
   const toggleTrack = (kind: "audio" | "video") => {
     const track = streamRef.current?.getTracks().find((candidate) => candidate.kind === kind);
