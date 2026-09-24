@@ -15,6 +15,15 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   outputFileTracingRoot: process.cwd(),
+  experimental: {
+    serverActions: {
+      allowedOrigins: [
+        "localhost:3000",
+        "127.0.0.1:3000",
+        "live-debate-ai.onrender.com",
+      ],
+    },
+  },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

@@ -19,7 +19,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     if (!isLoaded) return;
     const instance = io({
       path: "/api/socket.io",
-      transports: ["websocket", "polling"],
+      // polling first so Render's reverse proxy can complete the HTTP
+      // handshake before Socket.IO upgrades to WebSocket
+      transports: ["polling", "websocket"],
       reconnection: true,
       reconnectionDelay: 500,
       reconnectionDelayMax: 5_000,
