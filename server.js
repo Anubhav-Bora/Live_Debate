@@ -303,29 +303,45 @@ async function finalizeDebate(debateId, io) {
 }
 
 async function recoverActiveDebates(io) {
-  const debates = await prisma.debate.findMany({ where: { status: "in-progress" } });
-  for (const debate of debates) {
-    const startTime = debate.startTime || debate.updatedAt;
-    const endAt = new Date(startTime.getTime() + debate.duration * 1_000);
-    if (endAt.getTime() <= Date.now()) {
-      finalizeDebate(debate.id, io).catch((error) => console.error("Recovery finalization failed:", error));
-    } else {
-      scheduleDebateEnd(debate.id, endAt, io);
+  try {
+    const debates = await prisma.debate.findMany({ where: { status: "in-progress" } });
+    for (const debate of debates) {
+      const startTime = debate.startTime || debate.updatedAt;
+      const endAt = new Date(startTime.getTime() + debate.duration * 1_000);
+      if (endAt.getTime() <= Date.now()) {
+        finalizeDebate(debate.id, io).catch((error) => console.error("Recovery finalization failed:", error));
+      } else {
+        scheduleDebateEnd(debate.id, endAt, io);
+      }
     }
-  }
 
-  const interruptedAnalyses = await prisma.debate.findMany({
-    where: {
-      status: "completed",
-      analysisStatus: { in: ["idle", "analyzing"] },
-    },
-    select: { id: true, analysisStatus: true, analysisStartedAt: true },
-  });
-  for (const debate of interruptedAnalyses) {
-    if (debate.analysisStatus === "idle") {
-      analyzeDebate(debate.id, io).catch((error) => console.error("Analysis recovery failed:", error));
+    const interruptedAnalyses = await prisma.debate.findMany({
+      where: {
+        status: "completed",
+        analysisStatus: { in: ["idle", "analyzing"] },
+      },
+      select: { id: true, analysisStatus: true, analysisStartedAt: true },
+    });
+    for (const debate of interruptedAnalyses) {
+      if (debate.analysisStatus === "idle") {
+        analyzeDebate(debate.id, io).catch((error) => console.error("Analysis recovery failed:", error));
+      } else {
+        scheduleAnalysisRecovery(debate.id, debate.analysisStartedAt, io);
+      }
+    }
+  } catch (error) {
+    // P2021 = table does not exist (migrations not yet applied).
+    // Log a clear message and continue — the server starts up so
+    // `npm start` can run `prisma migrate deploy` before this code path
+    // is hit in normal production flow. If migrations are missing, the
+    // API routes will return useful errors rather than crashing the process.
+    if (error?.code === "P2021") {
+      console.error(
+        "⚠️  Database tables not found. Run `npm run db:migrate` (or ensure the start command is `npm start`, not `npm run dev`).",
+        "\n   The server will continue but all API calls will fail until migrations are applied."
+      );
     } else {
-      scheduleAnalysisRecovery(debate.id, debate.analysisStartedAt, io);
+      throw error;
     }
   }
 }
@@ -347,6 +363,10 @@ async function start() {
   const io = new SocketIOServer(httpServer, {
     path: "/api/socket.io",
     maxHttpBufferSize: 250_000,
+    // Restrict to polling so the server never attempts a WebSocket upgrade
+    // that Render's reverse proxy would silently drop. Polling is reliable
+    // on all Render plan tiers and is sufficient for this app's signaling.
+    transports: ["polling"],
     cors: {
       credentials: true,
       methods: ["GET", "POST"],
