@@ -89,7 +89,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
             <form onSubmit={submit} className="mt-8 space-y-5">
               {signingUp && (
                 <Field label="Username" icon={UserRound}>
-                  <input required minLength={3} maxLength={24} pattern="[a-zA-Z0-9_-]+" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="sharp_mind" className="auth-input" />
+                  <input required minLength={3} maxLength={24} pattern="[a-zA-Z0-9_\\x2D]+" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="sharp_mind" className="auth-input" />
                 </Field>
               )}
 
@@ -98,7 +98,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
               </Field>
 
               <Field label="Password" icon={LockKeyhole}>
-                <input required type={showPassword ? "text" : "password"} minLength={signingUp ? 10 : undefined} maxLength={128} autoComplete={signingUp ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={signingUp ? "10+ characters, letter and number" : "Enter your password"} className="auth-input pr-11" />
+                <input required type={showPassword ? "text" : "password"} minLength={6} maxLength={128} autoComplete={signingUp ? "new-password" : "current-password"} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={signingUp ? "6+ characters, letter and number" : "Enter your password"} className="auth-input pr-11" />
                 <button type="button" onClick={() => setShowPassword((visible) => !visible)} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-500 transition hover:text-white" aria-label={showPassword ? "Hide password" : "Show password"}>
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -106,7 +106,7 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
 
               {signingUp && (
                 <Field label="Confirm password" icon={LockKeyhole}>
-                  <input required type={showPassword ? "text" : "password"} minLength={10} maxLength={128} autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder="Repeat your password" className="auth-input" />
+                  <input required type={showPassword ? "text" : "password"} minLength={6} maxLength={128} autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} placeholder="Repeat your password" className="auth-input" />
                 </Field>
               )}
 

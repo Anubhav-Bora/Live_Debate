@@ -23,8 +23,8 @@ export async function POST(request: Request) {
     if (!/^[a-z0-9_-]{3,24}$/.test(username)) {
       return NextResponse.json({ error: "Username must be 3–24 characters using letters, numbers, _ or -." }, { status: 400 });
     }
-    if (password.length < 10 || password.length > 128 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
-      return NextResponse.json({ error: "Password must be 10–128 characters and include a letter and number." }, { status: 400 });
+    if (password.length < 6 || password.length > 128 || !/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+      return NextResponse.json({ error: "Password must be 6–128 characters and include a letter and number." }, { status: 400 });
     }
 
     const passwordHash = await hashPassword(password);

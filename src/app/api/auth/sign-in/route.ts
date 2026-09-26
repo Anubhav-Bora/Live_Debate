@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     if (!allowRequest(rateKey, 8, 10 * 60_000)) {
       return NextResponse.json({ error: "Too many sign-in attempts. Please wait and try again." }, { status: 429 });
     }
-    if (!email || !password || password.length > 128) {
+    if (!email || password.length < 6 || password.length > 128) {
       return NextResponse.json({ error: "Incorrect email or password." }, { status: 401 });
     }
 
