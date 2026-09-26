@@ -330,19 +330,15 @@ async function recoverActiveDebates(io) {
       }
     }
   } catch (error) {
-    // P2021 = table does not exist (migrations not yet applied).
-    // Log a clear message and continue — the server starts up so
-    // `npm start` can run `prisma migrate deploy` before this code path
-    // is hit in normal production flow. If migrations are missing, the
-    // API routes will return useful errors rather than crashing the process.
+    // Do not report the service as live when its database schema is missing.
+    // `npm start` applies committed migrations before launching this server.
     if (error?.code === "P2021") {
-      console.error(
-        "⚠️  Database tables not found. Run `npm run db:migrate` (or ensure the start command is `npm start`, not `npm run dev`).",
-        "\n   The server will continue but all API calls will fail until migrations are applied."
+      throw new Error(
+        "Database tables are missing. Set the Render start command to `npm start` or run `npm run db:migrate` against the configured DATABASE_URL.",
+        { cause: error },
       );
-    } else {
-      throw error;
     }
+    throw error;
   }
 }
 
